@@ -1,0 +1,295 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+#wrap{background:#111;border-radius:12px;overflow:hidden;font-family:var(--font-sans,sans-serif)}
+canvas{display:block;width:100%;height:360px}
+#panel{background:#1a1a1a;padding:16px;display:grid;gap:12px}
+.row{display:grid;grid-template-columns:90px 1fr 44px;align-items:center;gap:8px}
+.row label{font-size:12px;color:#aaa}
+.row input[type=range]{width:100%;accent-color:#a855f7;cursor:pointer}
+.row span{font-size:12px;color:#ccc;text-align:right;font-variant-numeric:tabular-nums}
+.sec{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.08em;padding-top:4px}
+#grad-strip{display:block;width:100%;height:28px;border-radius:6px;cursor:pointer;border:1px solid #333}
+#color-picker-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#color-picker-row label{font-size:12px;color:#aaa}
+input[type=color]{width:36px;height:28px;border:1px solid #444;border-radius:4px;background:none;cursor:pointer;padding:1px}
+button{font-size:11px;padding:4px 10px;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer}
+</style>
+<div id="wrap">
+<canvas id="c"></canvas>
+<div id="panel">
+  <div class="sec">gradient map</div>
+  <canvas id="grad-strip" height="28"></canvas>
+  <div id="color-picker-row">
+    <label>selected stop:</label>
+    <input type="color" id="stop-color" value="#ffffff">
+    <label style="margin-left:8px">pos:</label>
+    <input type="range" id="stop-pos" min="0" max="100" step="1" value="100" style="width:90px;accent-color:#a855f7">
+    <span id="stop-pos-val" style="font-size:12px;color:#ccc;min-width:30px">100%</span>
+    <button id="add-stop" style="margin-left:auto;color:#ccc">+ add</button>
+    <button id="del-stop" style="color:#c66">del</button>
+  </div>
+  <div class="sec" style="margin-top:4px">inner glow</div>
+  <div class="row"><label>strength</label><input type="range" id="glow" min="0" max="100" value="40" step="1"><span id="glow-v">40</span></div>
+  <div class="row"><label>width</label><input type="range" id="gloww" min="1" max="100" value="30" step="1"><span id="gloww-v">30</span></div>
+  <div class="sec" style="margin-top:4px">perspective</div>
+  <div class="row"><label>depth</label><input type="range" id="fov" min="0" max="100" value="50" step="1"><span id="fov-v">50</span></div>
+  <div class="row"><label>angle</label><input type="range" id="vpangle" min="-100" max="100" value="0" step="1"><span id="vpangle-v">0</span></div>
+  <div class="sec" style="margin-top:4px">blocks</div>
+  <div class="row"><label>density</label><input type="range" id="density" min="4" max="200" value="34" step="1"><span id="density-v">34</span></div>
+  <div class="row"><label>size</label><input type="range" id="size" min="1" max="100" value="52" step="1"><span id="size-v">52</span></div>
+  <div class="row"><label>spread</label><input type="range" id="spread" min="0" max="100" value="70" step="1"><span id="spread-v">70</span></div>
+  <div class="row"><label>lane width</label><input type="range" id="lane" min="0" max="100" value="100" step="1"><span id="lane-v">100</span></div>
+  <div class="row"><label>variance</label><input type="range" id="variance" min="0" max="100" value="46" step="1"><span id="variance-v">46</span></div>
+  <div class="row"><label>skew</label><input type="range" id="skew" min="0" max="100" value="91" step="1"><span id="skew-v">91</span></div>
+  <div class="row"><label>speed</label><input type="range" id="speed" min="0" max="200" value="74" step="1"><span id="speed-v">74</span></div>
+  <div class="row"><label>opacity</label><input type="range" id="opacity" min="0" max="100" value="100" step="1"><span id="opacity-v">100</span></div>
+  <div class="sec" style="margin-top:4px">shape</div>
+  <div class="row"><label>roundness</label><input type="range" id="roundness" min="0" max="100" value="0" step="1"><span id="roundness-v">0</span></div>
+</div>
+</div>
+<script>
+const canvas=document.getElementById('c');
+const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+function resize(){const dpr=window.devicePixelRatio||1;canvas.width=canvas.offsetWidth*dpr;canvas.height=canvas.offsetHeight*dpr;gl.viewport(0,0,canvas.width,canvas.height);}
+resize();window.addEventListener('resize',resize);
+
+const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_Position=vec4(aPos,0.,1.);}`;
+
+const frag=`
+precision highp float;
+varying vec2 vUv;
+uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uVPAngle;
+uniform vec2 uRes;
+uniform sampler2D uGradTex;
+const int MAXN=200;
+
+vec2 hash21(float n){return fract(sin(vec2(n,n+17.)*vec2(127.1,311.7))*43758.5453);}
+
+float sdRoundBox(vec2 p,vec2 b,float r){
+  r=min(r,min(b.x,b.y));
+  vec2 q=abs(p)-b+r;
+  return length(max(q,0.))+min(max(q.x,q.y),0.)-r;
+}
+
+vec3 applyGlow(vec3 col,vec2 luv,float strength,float width){
+  float edgeDist=1.-max(abs(luv.x),abs(luv.y));
+  float f=strength*smoothstep(width,0.,edgeDist);
+  return clamp(col*(1.+f*2.5),0.,1.);
+}
+
+void main(){
+  vec2 uv=vUv;
+  float aspect=uRes.x/max(uRes.y,.0001);
+  float time=uTime*0.01*uSpeed*0.01;
+
+  // 0=flat, 1=full 3D
+  float perspective=uFov*.01;
+  float vpY=uVPAngle*.01*0.8*perspective;
+
+  float baseSize=mix(.002,.07,uSize*.01);
+  float spread=mix(.25,1.25,uSpread*.01);
+  float skewA=exp2(((1.-(uSkew*.01))-.25)*2.4)*2.4;
+  float laneW=mix(.18,1.18,uLane*.01);
+  float varF=mix(.45,1.15,uVariance*.01);
+  int N=int(uDensity);
+
+  float nearT=1e9,secT=1e9;
+  float nearAlpha=0.,secAlpha=0.;
+  float nearNF=0.,secNF=0.;
+  vec2 nearLocalUV=vec2(0.),secLocalUV=vec2(0.);
+  bool hasHit=false,hasSec=false;
+
+  for(int i=0;i<MAXN;i++){
+    if(i>=N)break;
+    float fi=float(i)+1.;
+    vec2 rnd=hash21(fi*23.17);
+    float rnd2=fract((rnd.x+rnd.y)*12.35731);
+    float rnd3=fract((rnd.x*5.731+rnd.y*9.137)*4.17321);
+    float layD=clamp((float(i)+rnd.x*.75)/max(float(N-1),1.),0.,1.);
+    float travel=fract(rnd.y+time*mix(.18,1.,layD));
+
+    float sv=mix(1.,mix(.55,1.9,rnd2),uVariance*.01);
+    float av=mix(1.,mix(.65,1.6,rnd3),uVariance*.01);
+
+    // flat: bars stacked vertically across screen, each on its own Y lane
+    // 3D: bars on X planes flying toward camera
+    float side=mix(-1.,1.,step(.5,rnd2));
+    float laneOff=side*mix(laneW,2.6,rnd.x);
+    float crossOff=(rnd3-.5)*mix(.08,2.6,spread)*varF;
+
+    float pThick=baseSize*mix(1.1,2.6,sv);
+    float pLen=baseSize*mix(5.,13.,sv)*mix(1.15,3.2,rnd2);
+    vec2 halfS3d=vec2(pThick,pLen)*vec2(.52,3.1);
+    halfS3d*=vec2(skewA,1./skewA);
+    halfS3d*=vec2(av,1./av);
+
+    // flat bar: width in X screenspace, height in Y screenspace
+    float flatH=mix(.004,.04,sv*0.5)*0.8;
+    float flatW=mix(.15,.65,rnd2);
+    // Y position: spread across screen
+    float flatY=(rnd3-.5)*mix(.1,1.8,spread)*varF+vpY;
+    // X scroll: travel across screen left to right (or right to left)
+    float dir=sign(side);
+    float flatX=(fract(travel+rnd.x)-.5)*2.5*dir;
+
+    float farD=5.4+(pLen*3.1*.42)*2.5;
+    float depth=mix(farD,-halfS3d.y-baseSize*2.,travel);
+
+    // ---- 3D ray intersect ----
+    float focalLen=mix(3.0,0.3,perspective);
+    vec2 screen3d=vec2((uv.x-.5)*aspect,(uv.y-.5)-vpY);
+    vec3 ro3=vec3(0.,vpY*focalLen,0.);
+    vec3 rd3=normalize(vec3(screen3d,focalLen));
+    float safeRdx=sign(rd3.x)*max(abs(rd3.x),.0001);
+    float tHit3=(laneOff-ro3.x)/safeRdx;
+    vec2 hitL3d=vec2(0.);
+    bool hit3d=false;
+    if(tHit3>0.){
+      vec3 hit=ro3+rd3*tHit3;
+      hitL3d=vec2(hit.y-crossOff,hit.z-depth);
+      float r3=mix(0.,min(halfS3d.x,halfS3d.y),uRoundness*.01);
+      if(sdRoundBox(hitL3d,halfS3d,r3)<=0.) hit3d=true;
+    }
+
+    // ---- 2D flat intersect ----
+    // bar center in screen UV space
+    vec2 barCenter=vec2(flatX, flatY);
+    vec2 barHalf=vec2(flatW, flatH);
+    vec2 flatLocal=vec2((uv.x-.5)*aspect, uv.y-.5)-barCenter;
+    float rFlat=mix(0.,min(barHalf.x,barHalf.y),uRoundness*.01);
+    bool hit2d=sdRoundBox(flatLocal,barHalf,rFlat)<=0.;
+    vec2 hitL2d=flatLocal/barHalf;
+
+    // blend between 2D and 3D hit
+    bool didHit=mix(hit2d?1.:0., hit3d?1.:0., perspective)>0.5;
+    vec2 hitLuv=mix(hitL2d, hitL3d/max(halfS3d,vec2(.0001)), perspective);
+    float tHit=mix(
+      hit2d ? (0.5+rnd.x*0.5) : 1e8,
+      hit3d ? tHit3 : 1e8,
+      perspective
+    );
+
+    if(didHit){
+      float hitD=depth+hitL3d.y;
+      float farFade=mix(1., 1.-smoothstep(.85,farD,hitD), perspective);
+      float aD=travel*(1.35-.35*travel);
+      float a=farFade*mix(.42,1.,aD)*uOpacity*.01;
+      if(tHit<nearT){secT=nearT;secAlpha=nearAlpha;secNF=nearNF;secLocalUV=nearLocalUV;hasSec=hasHit;nearT=tHit;nearAlpha=a;nearNF=travel;nearLocalUV=hitLuv;hasHit=true;}
+      else if(tHit<secT){secT=tHit;secAlpha=a*.88;secNF=travel;secLocalUV=hitLuv;hasSec=true;}
+    }
+  }
+
+  vec3 finalColor=vec3(0.);
+  if(hasSec){
+    vec3 sc=texture2D(uGradTex,vec2(secNF,.5)).rgb*mix(.66,1.,secNF);
+    sc=applyGlow(sc,secLocalUV,uGlow*.01,uGlowW*.01);
+    finalColor=mix(finalColor,sc,secAlpha*.88);
+  }
+  if(hasHit){
+    vec3 nc=texture2D(uGradTex,vec2(nearNF,.5)).rgb*mix(.7,1.1,nearNF);
+    nc=applyGlow(nc,nearLocalUV,uGlow*.01,uGlowW*.01);
+    finalColor=mix(finalColor,nc,nearAlpha);
+  }
+  gl_FragColor=vec4(finalColor,1.);
+}`;
+
+function mkS(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}
+const prog=gl.createProgram();
+gl.attachShader(prog,mkS(gl.VERTEX_SHADER,vert));
+gl.attachShader(prog,mkS(gl.FRAGMENT_SHADER,frag));
+gl.linkProgram(prog);gl.useProgram(prog);
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+const ap=gl.getAttribLocation(prog,'aPos');
+gl.enableVertexAttribArray(ap);gl.vertexAttribPointer(ap,2,gl.FLOAT,false,0,0);
+const U=n=>gl.getUniformLocation(prog,n);
+const uTime=U('uTime'),uRes=U('uRes'),uDens=U('uDensity'),uSz=U('uSize'),uSpr=U('uSpread');
+const uLn=U('uLane'),uVr=U('uVariance'),uSk=U('uSkew'),uSp=U('uSpeed');
+const uOp=U('uOpacity'),uRd=U('uRoundness'),uGl=U('uGlow'),uGw=U('uGlowW'),uGT=U('uGradTex');
+const uFov=U('uFov'),uVPA=U('uVPAngle');
+
+const gradTex=gl.createTexture();
+gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gradTex);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+gl.uniform1i(uGT,0);
+let gradStops=[{pos:.125,color:[3,3,7]},{pos:.294,color:[35,11,161]},{pos:.684,color:[243,137,255]},{pos:.822,color:[255,219,158]},{pos:1.0,color:[255,255,255]}];
+let selStop=4;
+function hexToRgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
+function rgbToHex(r,g,b){return'#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');}
+function uploadGrad(){
+  const W=256,data=new Uint8Array(W*4);
+  const s=[...gradStops].sort((a,b)=>a.pos-b.pos);
+  for(let x=0;x<W;x++){
+    const t=x/(W-1);let i=0;
+    for(let j=0;j<s.length-1;j++){if(t>=s[j].pos)i=j;}
+    const a=s[i],b=s[Math.min(i+1,s.length-1)];
+    const f=a.pos===b.pos?1:Math.max(0,Math.min(1,(t-a.pos)/(b.pos-a.pos)));
+    data[x*4]=Math.round(a.color[0]+(b.color[0]-a.color[0])*f);
+    data[x*4+1]=Math.round(a.color[1]+(b.color[1]-a.color[1])*f);
+    data[x*4+2]=Math.round(a.color[2]+(b.color[2]-a.color[2])*f);
+    data[x*4+3]=255;
+  }
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gradTex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,W,1,0,gl.RGBA,gl.UNSIGNED_BYTE,data);
+}
+uploadGrad();
+const gc=document.getElementById('grad-strip'),gctx=gc.getContext('2d');
+const spSlider=document.getElementById('stop-pos'),spVal=document.getElementById('stop-pos-val'),scPicker=document.getElementById('stop-color');
+function drawGrad(){
+  const W=gc.offsetWidth||400;gc.width=W;gc.height=28;
+  const s=[...gradStops].sort((a,b)=>a.pos-b.pos);
+  const g=gctx.createLinearGradient(0,0,W,0);
+  s.forEach(st=>g.addColorStop(st.pos,rgbToHex(...st.color)));
+  gctx.fillStyle=g;gctx.fillRect(0,0,W,28);
+  gradStops.forEach((st,i)=>{
+    const x=st.pos*W;
+    gctx.beginPath();gctx.arc(x,14,i===selStop?8:6,0,Math.PI*2);
+    gctx.fillStyle=rgbToHex(...st.color);gctx.strokeStyle=i===selStop?'#fff':'#888';
+    gctx.lineWidth=i===selStop?2.5:1.5;gctx.fill();gctx.stroke();
+  });
+}
+drawGrad();window.addEventListener('resize',drawGrad);
+function selS(i){selStop=i;scPicker.value=rgbToHex(...gradStops[i].color);spSlider.value=Math.round(gradStops[i].pos*100);spVal.textContent=spSlider.value+'%';drawGrad();}
+selS(selStop);
+let drag=-1;
+gc.addEventListener('mousedown',e=>{
+  const r=gc.getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
+  let best=-1,bd=999;gradStops.forEach((s,i)=>{const d=Math.abs(s.pos-x);if(d<bd){bd=d;best=i;}});
+  if(bd<0.07){drag=best;selS(best);}
+});
+document.addEventListener('mousemove',e=>{
+  if(drag<0)return;
+  const r=gc.getBoundingClientRect(),x=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+  gradStops[drag].pos=x;spSlider.value=Math.round(x*100);spVal.textContent=spSlider.value+'%';
+  uploadGrad();drawGrad();
+});
+document.addEventListener('mouseup',()=>{drag=-1;});
+scPicker.addEventListener('input',e=>{gradStops[selStop].color=hexToRgb(e.target.value);uploadGrad();drawGrad();});
+spSlider.addEventListener('input',e=>{spVal.textContent=e.target.value+'%';gradStops[selStop].pos=parseInt(e.target.value)/100;uploadGrad();drawGrad();});
+document.getElementById('add-stop').addEventListener('click',()=>{gradStops.push({pos:.5,color:[128,128,128]});selStop=gradStops.length-1;uploadGrad();drawGrad();selS(selStop);});
+document.getElementById('del-stop').addEventListener('click',()=>{if(gradStops.length<=2)return;gradStops.splice(selStop,1);selStop=Math.min(selStop,gradStops.length-1);uploadGrad();drawGrad();selS(selStop);});
+const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww','fov','vpangle'];
+const vals={};
+sliders.forEach(id=>{
+  const el=document.getElementById(id),out=document.getElementById(id+'-v');
+  vals[id]=parseFloat(el.value);
+  el.addEventListener('input',e=>{vals[id]=parseFloat(e.target.value);out.textContent=e.target.value;});
+});
+let t=0;
+function frame(){
+  t++;
+  gl.uniform1f(uTime,t);gl.uniform2f(uRes,canvas.width,canvas.height);
+  gl.uniform1f(uDens,vals.density);gl.uniform1f(uSz,vals.size);gl.uniform1f(uSpr,vals.spread);
+  gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
+  gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
+  gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
+  gl.uniform1f(uFov,vals.fov);gl.uniform1f(uVPA,vals.vpangle);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
