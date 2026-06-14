@@ -1,57 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bloomfi</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-#wrap{background:#111;border-radius:12px;overflow:hidden;font-family:var(--font-sans,sans-serif)}
-canvas{display:block;width:100%;height:360px}
-#panel{background:#1a1a1a;padding:16px;display:grid;gap:12px}
-.row{display:grid;grid-template-columns:90px 1fr 44px;align-items:center;gap:8px}
-.row label{font-size:12px;color:#aaa}
-.row input[type=range]{width:100%;accent-color:#a855f7;cursor:pointer}
-.row span{font-size:12px;color:#ccc;text-align:right;font-variant-numeric:tabular-nums}
-.sec{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.08em;padding-top:4px}
-#grad-strip{display:block;width:100%;height:28px;border-radius:6px;cursor:pointer;border:1px solid #333}
-#color-picker-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-#color-picker-row label{font-size:12px;color:#aaa}
-input[type=color]{width:36px;height:28px;border:1px solid #444;border-radius:4px;background:none;cursor:pointer;padding:1px}
-button{font-size:11px;padding:4px 10px;background:#2a2a2a;border:1px solid #444;border-radius:4px;cursor:pointer}
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Geist',sans-serif}
+html,body{height:100%;overflow:hidden;background:#000;color:#fff;font-size:14px;font-weight:500;-webkit-font-smoothing:antialiased}
+#app{display:flex;height:100vh}
+
+/* ── LEFT PANEL ── */
+#lp{width:307px;flex-shrink:0;display:flex;flex-direction:column;padding:8px;gap:17px;position:relative}
+#lp-head{
+  background:#0f0f0f;border:1px solid rgba(255,255,255,0.09);border-radius:16px;
+  display:flex;align-items:center;padding:14px 16px;flex-shrink:0;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.info-card{
+  background:#0f0f0f;border:1px solid rgba(255,255,255,0.09);border-radius:16px;
+  padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.25);
+  display:flex;flex-direction:column;gap:10px;
+}
+.info-card-title{font-size:13px;font-weight:600;color:rgba(255,255,255,.6)}
+.info-card-body{font-size:12px;color:rgba(255,255,255,.28);line-height:1.6}
+.stat-row{display:flex;align-items:center;justify-content:space-between}
+.stat-label{font-size:11px;color:rgba(255,255,255,.25);letter-spacing:.08em;text-transform:uppercase}
+.stat-val{font-size:12px;color:rgba(255,255,255,.5);font-weight:500}
+.divider{border:none;border-top:1px solid rgba(255,255,255,.06)}
+
+/* ── CENTER ── */
+#center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;background:#000}
+#canvas-area{flex:1;position:relative;overflow:hidden}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+/* ── RIGHT PANEL ── */
+#rp-outer{width:373px;flex-shrink:0;background:#0f0f0f;border-left:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;overflow:hidden;box-shadow:-1px 0 0 rgba(0,0,0,0.75)}
+#top-toolbar{display:flex;align-items:center;gap:8px;padding:14px 8px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.05)}
+.tb-solid-btn{
+  background:#fff;border:1px solid rgba(255,255,255,0.11);
+  border-radius:8px;color:#000;cursor:pointer;font-family:'Geist',sans-serif;
+  font-weight:500;font-size:14px;padding:7px 16px;transition:.15s;white-space:nowrap;flex:1;
+}
+.tb-solid-btn:hover{background:rgba(255,255,255,0.9)}
+
+#rp{flex:1;overflow-y:auto;overflow-x:hidden}
+#rp::-webkit-scrollbar{width:4px}
+#rp::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:2px}
+
+/* Sections */
+.sec{border-bottom:1px solid rgba(255,255,255,0.05);padding:14px 12px}
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.sec-head h3{font-size:11px;letter-spacing:.12em;color:rgba(255,255,255,.3);text-transform:uppercase}
+
+/* Prop rows */
+.prop-row{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.prop-row:last-child{margin-bottom:0}
+.prop-top{display:flex;align-items:center;justify-content:space-between;width:100%}
+.prop-label{font-size:14px;font-weight:500;color:rgba(255,255,255,.5);white-space:nowrap}
+.prop-val{
+  background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.11);
+  border-radius:8px;padding:5px 10px;font-size:14px;font-weight:500;color:#fff;
+  min-width:54px;text-align:right;white-space:nowrap;
+}
+
+/* Range sliders */
+input[type=range]{
+  -webkit-appearance:none;appearance:none;
+  width:100%;height:4px;border-radius:99px;
+  background:rgba(255,255,255,0.1);outline:none;cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:22px;height:13px;border-radius:96px;
+  background:#fff;border:1px solid rgba(0,0,0,0.12);
+  box-shadow:0 2px 4px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.1);
+  cursor:pointer;
+}
+input[type=range]::-moz-range-thumb{
+  width:22px;height:13px;border-radius:96px;
+  background:#fff;border:1px solid rgba(0,0,0,0.12);
+  box-shadow:0 2px 4px rgba(0,0,0,.1);cursor:pointer;border:none;
+}
+
+/* Gradient stop editor */
+#grad-strip{display:block;width:100%;height:32px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.11);margin-bottom:12px}
+.stop-editor-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.stop-editor-row label{font-size:12px;color:rgba(255,255,255,.35);white-space:nowrap}
+input[type=color]{width:32px;height:28px;border:1px solid rgba(255,255,255,.15);border-radius:6px;background:none;cursor:pointer;padding:2px;flex-shrink:0}
+.stop-pos-group{display:flex;align-items:center;gap:6px;flex:1}
+#stop-pos{flex:1}
+#stop-pos-val{font-size:12px;color:rgba(255,255,255,.4);min-width:36px;text-align:right;white-space:nowrap}
+.stop-btns{display:flex;gap:6px}
+.stop-btn{
+  flex:1;padding:7px 10px;font-size:12px;letter-spacing:.06em;
+  border:1px solid rgba(255,255,255,.1);border-radius:8px;
+  background:rgba(255,255,255,0.03);color:rgba(255,255,255,.5);
+  cursor:pointer;font-family:'Geist',sans-serif;transition:.15s;
+}
+.stop-btn:hover{color:#fff;background:rgba(255,255,255,0.07)}
+.stop-btn.del:hover{color:#ff6b6b;border-color:rgba(255,80,80,.25);background:rgba(255,80,80,.07)}
+
+/* Toggle row */
+.tog-row{display:flex;align-items:center;justify-content:space-between}
+.sw{position:relative;width:34px;height:19px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw-t{position:absolute;inset:0;background:rgba(255,255,255,.1);border-radius:10px;cursor:pointer;transition:.2s;border:1px solid rgba(255,255,255,.1)}
+.sw-t:before{content:'';position:absolute;height:13px;width:13px;left:2px;top:2px;background:rgba(255,255,255,.5);border-radius:50%;transition:.2s}
+.sw input:checked+.sw-t{background:rgba(255,255,255,0.9)}
+.sw input:checked+.sw-t:before{transform:translateX(15px);background:#000}
 </style>
-<div id="wrap">
-<canvas id="c"></canvas>
-<div id="panel">
-  <div class="sec">gradient map</div>
-  <canvas id="grad-strip" height="28"></canvas>
-  <div id="color-picker-row">
-    <label>selected stop:</label>
-    <input type="color" id="stop-color" value="#ffffff">
-    <label style="margin-left:8px">pos:</label>
-    <input type="range" id="stop-pos" min="0" max="100" step="1" value="100" style="width:90px;accent-color:#a855f7">
-    <span id="stop-pos-val" style="font-size:12px;color:#ccc;min-width:30px">100%</span>
-    <button id="add-stop" style="margin-left:auto;color:#ccc">+ add</button>
-    <button id="del-stop" style="color:#c66">del</button>
+</head>
+<body>
+<div id="app">
+
+<!-- LEFT PANEL -->
+<div id="lp">
+  <div id="lp-head">
+    <svg width="113" height="29" viewBox="0 0 113 29" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M17.7233 1.93322C16.946 3.52329 16.5161 5.25744 16.4662 7.0187C16.3932 5.16078 15.8977 3.33636 15.0178 1.68312C14.9238 1.50653 14.7764 1.36219 14.5982 1.26295C14.4357 1.17248 14.2523 1.12292 14.0648 1.11882L8.67087 1.001C7.36109 0.972392 6.5703 2.38855 7.31583 3.42761L12.7681 11.0264C13.5386 12.1003 12.6678 13.5549 11.3183 13.4482L1.73795 12.6908C0.432229 12.5876 -0.443966 13.9562 0.236563 15.0359L2.99781 19.417C3.13351 19.6323 3.32326 19.8112 3.54954 19.9371C3.80807 20.081 4.10432 20.1525 4.40179 20.1286C6.33066 19.9739 8.20952 19.4106 9.89311 18.4763C8.1298 19.4825 6.65557 20.8673 5.54616 22.5259C5.43459 22.6927 5.3787 22.888 5.3787 23.0865C5.3787 23.2675 5.42592 23.4455 5.51601 23.6042L8.10716 28.1685C8.73636 29.2769 10.4033 29.2293 10.9635 28.087L15.0603 19.7335C15.6393 18.553 17.3808 18.553 17.9598 19.7335L22.0699 28.1146C22.63 29.2568 24.297 29.3044 24.9262 28.1961L27.4793 23.6992C27.6048 23.4781 27.6705 23.2302 27.6705 22.9782C27.6704 22.6903 27.5865 22.4071 27.4163 22.1706C26.3656 20.7101 25.005 19.4727 23.4263 18.547C25.1405 19.4264 27.0395 19.9311 28.9775 20.0234C29.183 20.0332 29.3863 19.9822 29.5646 19.883C29.727 19.7925 29.8632 19.6641 29.9607 19.5095L32.7634 15.0629C33.444 13.9832 32.5678 12.6146 31.2621 12.7178L21.7131 13.4726C20.3636 13.5792 19.4928 12.1246 20.2634 11.0507L25.7336 3.42706C26.4792 2.38802 25.6884 0.971861 24.3787 1.00043L19.0643 1.11632C18.8031 1.12202 18.5476 1.19107 18.3214 1.3171C18.0629 1.4611 17.8506 1.67282 17.7233 1.93322ZM16.6045 16.709C14.2205 16.709 11.958 17.3295 10.03 18.3992C11.9114 17.3258 13.5408 15.7845 14.7116 13.8285C15.8432 11.9381 16.4129 9.88361 16.4707 7.84482C16.5492 9.8397 17.1184 11.8459 18.2253 13.695C19.3678 15.6036 20.9469 17.1175 22.7707 18.187C20.9317 17.2435 18.8328 16.709 16.6045 16.709Z" fill="white"/>
+<path d="M42.122 15.0532V13.0567H45.9765C46.6954 13.0567 47.248 12.8571 47.6341 12.4578C48.0335 12.0585 48.2332 11.5128 48.2332 10.8207C48.2332 10.1153 48.0402 9.5696 47.6541 9.18362C47.268 8.78434 46.7088 8.58469 45.9765 8.58469H42.122V7.0674H45.7368C46.6954 7.0674 47.5409 7.18718 48.2732 7.42676C49.0055 7.65302 49.5847 8.03234 50.0107 8.56473C50.4368 9.09711 50.6498 9.82248 50.6498 10.7408V11.0203C50.6498 11.8722 50.4634 12.6042 50.0906 13.2164C49.7311 13.8154 49.1852 14.2745 48.4529 14.594C47.734 14.9001 46.8286 15.0532 45.7368 15.0532H42.122ZM40.1448 15.0532V0.299467H42.5214V15.0532H40.1448ZM42.122 8.16544V6.66811H45.4372C46.1961 6.66811 46.7487 6.46847 47.0949 6.06918C47.4544 5.65658 47.6341 5.13085 47.6341 4.49199C47.6341 3.83982 47.4544 3.31409 47.0949 2.9148C46.7487 2.5022 46.1961 2.29591 45.4372 2.29591H42.122V0.299467H45.1377C46.762 0.299467 47.9869 0.645516 48.8124 1.33761C49.6379 2.0164 50.0507 2.99466 50.0507 4.27238V4.55188C50.0507 5.45694 49.8376 6.17565 49.4116 6.70804C48.9988 7.24042 48.4196 7.61975 47.674 7.84601C46.9418 8.05896 46.0963 8.16544 45.1377 8.16544H42.122Z" fill="white"/>
+<path d="M55.1553 15.0931C54.4629 15.0931 53.8837 14.9999 53.4177 14.8136C52.9517 14.6139 52.6056 14.3078 52.3792 13.8952C52.1529 13.4826 52.0397 12.9369 52.0397 12.2581V0.399289H54.3963V12.318C54.3963 12.5576 54.4629 12.7439 54.5961 12.877C54.7292 13.0101 54.9156 13.0767 55.1553 13.0767H56.2337V15.0931H55.1553Z" fill="white"/>
+<path d="M62.4549 15.3327C61.5095 15.3327 60.6774 15.1796 59.9584 14.8735C59.2394 14.554 58.6336 14.1348 58.141 13.6157C57.6484 13.0966 57.2756 12.511 57.0226 11.8589C56.7696 11.1934 56.6431 10.5079 56.6431 9.80252V9.40323C56.6431 8.69782 56.7696 8.01238 57.0226 7.3469C57.2889 6.68142 57.6683 6.08914 58.161 5.57007C58.6669 5.03768 59.2794 4.61843 59.9984 4.31231C60.7173 4.00619 61.5362 3.85313 62.4549 3.85313C63.3735 3.85313 64.1857 4.00619 64.8914 4.31231C65.6103 4.61843 66.2228 5.03768 66.7288 5.57007C67.2347 6.08914 67.6142 6.68142 67.8671 7.3469C68.1334 8.01238 68.2666 8.69782 68.2666 9.40323V9.80252C68.2666 10.5079 68.1401 11.1934 67.8871 11.8589C67.6341 12.511 67.2613 13.0966 66.7687 13.6157C66.2761 14.1348 65.6703 14.554 64.9513 14.8735C64.2323 15.1796 63.4002 15.3327 62.4549 15.3327ZM62.4549 13.2963C63.1871 13.2963 63.8129 13.1366 64.3322 12.8171C64.8514 12.4844 65.2442 12.0385 65.5105 11.4795C65.7901 10.9205 65.9299 10.295 65.9299 9.60287C65.9299 8.89747 65.7901 8.26526 65.5105 7.70626C65.2309 7.14726 64.8315 6.70804 64.3122 6.38861C63.7929 6.05587 63.1738 5.8895 62.4549 5.8895C61.7359 5.8895 61.1168 6.05587 60.5975 6.38861C60.0782 6.70804 59.6788 7.14726 59.3992 7.70626C59.1196 8.26526 58.9798 8.89747 58.9798 9.60287C58.9798 10.295 59.1129 10.9205 59.3792 11.4795C59.6588 12.0385 60.0583 12.4844 60.5775 12.8171C61.0968 13.1366 61.7226 13.2963 62.4549 13.2963Z" fill="white"/>
+<path d="M74.792 15.3327C73.8466 15.3327 73.0145 15.1796 72.2955 14.8735C71.5765 14.554 70.9707 14.1348 70.4781 13.6157C69.9855 13.0966 69.6127 12.511 69.3597 11.8589C69.1067 11.1934 68.9802 10.5079 68.9802 9.80252V9.40323C68.9802 8.69782 69.1067 8.01238 69.3597 7.3469C69.626 6.68142 70.0054 6.08914 70.4981 5.57007C71.004 5.03768 71.6165 4.61843 72.3355 4.31231C73.0544 4.00619 73.8733 3.85313 74.792 3.85313C75.7106 3.85313 76.5228 4.00619 77.2285 4.31231C77.9474 4.61843 78.5599 5.03768 79.0659 5.57007C79.5718 6.08914 79.9513 6.68142 80.2042 7.3469C80.4705 8.01238 80.6037 8.69782 80.6037 9.40323V9.80252C80.6037 10.5079 80.4772 11.1934 80.2242 11.8589C79.9712 12.511 79.5984 13.0966 79.1058 13.6157C78.6132 14.1348 78.0074 14.554 77.2884 14.8735C76.5694 15.1796 75.7373 15.3327 74.792 15.3327ZM74.792 13.2963C75.5242 13.2963 76.15 13.1366 76.6693 12.8171C77.1885 12.4844 77.5813 12.0385 77.8476 11.4795C78.1272 10.9205 78.267 10.295 78.267 9.60287C78.267 8.89747 78.1272 8.26526 77.8476 7.70626C77.568 7.14726 77.1686 6.70804 76.6493 6.38861C76.13 6.05587 75.5109 5.8895 74.792 5.8895C74.073 5.8895 73.4539 6.05587 72.9346 6.38861C72.4153 6.70804 72.0159 7.14726 71.7363 7.70626C71.4567 8.26526 71.3169 8.89747 71.3169 9.60287C71.3169 10.295 71.45 10.9205 71.7163 11.4795C71.9959 12.0385 72.3954 12.4844 72.9146 12.8171C73.4339 13.1366 74.0597 13.2963 74.792 13.2963Z" fill="white"/>
+<path d="M82.0762 14.9733V4.21249H83.9336V8.84423H83.7139C83.7139 7.77946 83.8471 6.88106 84.1134 6.14903C84.393 5.41701 84.8057 4.858 85.3516 4.47203C85.9108 4.08605 86.6031 3.89306 87.4286 3.89306H87.5285C88.3673 3.89306 89.0596 4.08605 89.6055 4.47203C90.1647 4.858 90.5775 5.41701 90.8438 6.14903C91.1234 6.88106 91.2632 7.77946 91.2632 8.84423H90.6241C90.6241 7.77946 90.7639 6.88106 91.0435 6.14903C91.3231 5.41701 91.7425 4.858 92.3017 4.47203C92.8609 4.08605 93.5532 3.89306 94.3787 3.89306H94.4786C95.3174 3.89306 96.0164 4.08605 96.5756 4.47203C97.1348 4.858 97.5542 5.41701 97.8338 6.14903C98.1134 6.88106 98.2532 7.77946 98.2532 8.84423V14.9733H95.9165V8.50484C95.9165 7.71957 95.7168 7.10733 95.3174 6.66811C94.9313 6.22889 94.392 6.00928 93.6997 6.00928C92.9807 6.00928 92.4082 6.2422 91.9821 6.70804C91.5561 7.16056 91.343 7.79277 91.343 8.60466V14.9733H88.9864V8.50484C88.9864 7.71957 88.7934 7.10733 88.4072 6.66811C88.0211 6.22889 87.4819 6.00928 86.7895 6.00928C86.0706 6.00928 85.4914 6.2422 85.052 6.70804C84.626 7.16056 84.4129 7.79277 84.4129 8.60466V14.9733H82.0762Z" fill="white"/>
+<path d="M100.543 14.9733V0.399289H102.94V14.9733H100.543ZM102.54 8.68451V6.60822H108.592V8.68451H102.54ZM102.54 2.47559V0.399289H108.891V2.47559H102.54Z" fill="white"/>
+<path d="M110.663 14.9733V4.21249H113V14.9733H110.663ZM109.086 6.00928V4.21249H113V6.00928H109.086ZM111.422 2.71516C110.943 2.71516 110.583 2.58872 110.344 2.33584C110.117 2.08295 110.004 1.75687 110.004 1.35758C110.004 0.971601 110.117 0.652171 110.344 0.399289C110.583 0.133096 110.943 0 111.422 0C111.915 0 112.274 0.133096 112.501 0.399289C112.74 0.652171 112.86 0.971601 112.86 1.35758C112.86 1.75687 112.74 2.08295 112.501 2.33584C112.274 2.58872 111.915 2.71516 111.422 2.71516Z" fill="white"/>
+    </svg>
   </div>
-  <div class="sec" style="margin-top:4px">inner glow</div>
-  <div class="row"><label>strength</label><input type="range" id="glow" min="0" max="100" value="40" step="1"><span id="glow-v">40</span></div>
-  <div class="row"><label>width</label><input type="range" id="gloww" min="1" max="100" value="30" step="1"><span id="gloww-v">30</span></div>
-  <div class="sec" style="margin-top:4px">perspective</div>
-  <div class="row"><label>depth</label><input type="range" id="fov" min="0" max="100" value="50" step="1"><span id="fov-v">50</span></div>
-  <div class="row"><label>angle</label><input type="range" id="vpangle" min="-100" max="100" value="0" step="1"><span id="vpangle-v">0</span></div>
-  <div class="sec" style="margin-top:4px">blocks</div>
-  <div class="row"><label>density</label><input type="range" id="density" min="4" max="200" value="34" step="1"><span id="density-v">34</span></div>
-  <div class="row"><label>size</label><input type="range" id="size" min="1" max="100" value="52" step="1"><span id="size-v">52</span></div>
-  <div class="row"><label>spread</label><input type="range" id="spread" min="0" max="100" value="70" step="1"><span id="spread-v">70</span></div>
-  <div class="row"><label>lane width</label><input type="range" id="lane" min="0" max="100" value="100" step="1"><span id="lane-v">100</span></div>
-  <div class="row"><label>variance</label><input type="range" id="variance" min="0" max="100" value="46" step="1"><span id="variance-v">46</span></div>
-  <div class="row"><label>skew</label><input type="range" id="skew" min="0" max="100" value="91" step="1"><span id="skew-v">91</span></div>
-  <div class="row"><label>speed</label><input type="range" id="speed" min="0" max="200" value="74" step="1"><span id="speed-v">74</span></div>
-  <div class="row"><label>opacity</label><input type="range" id="opacity" min="0" max="100" value="100" step="1"><span id="opacity-v">100</span></div>
-  <div class="sec" style="margin-top:4px">shape</div>
-  <div class="row"><label>roundness</label><input type="range" id="roundness" min="0" max="100" value="0" step="1"><span id="roundness-v">0</span></div>
+
+  <div class="info-card">
+    <div class="info-card-title">Perspective Bars</div>
+    <div class="info-card-body">WebGL shader animation with gradient mapping, inner glow, and 3D perspective. Adjust settings in the panel on the right.</div>
+    <hr class="divider">
+    <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
+    <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
+    <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
+  </div>
 </div>
+
+<!-- CENTER -->
+<div id="center">
+  <div id="canvas-area">
+    <canvas id="c"></canvas>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="rp-outer">
+  <div id="top-toolbar">
+    <button class="tb-solid-btn" onclick="exportFrame()">Export PNG ↓</button>
+  </div>
+  <div id="rp">
+
+    <!-- Gradient Map -->
+    <div class="sec">
+      <div class="sec-head"><h3>Gradient Map</h3></div>
+      <canvas id="grad-strip" height="32"></canvas>
+      <div class="stop-editor-row">
+        <label>stop</label>
+        <input type="color" id="stop-color" value="#ffffff">
+        <div class="stop-pos-group">
+          <label>pos</label>
+          <input type="range" id="stop-pos" min="0" max="100" step="1" value="100">
+          <span id="stop-pos-val">100%</span>
+        </div>
+      </div>
+      <div class="stop-btns">
+        <button class="stop-btn" id="add-stop">+ Add stop</button>
+        <button class="stop-btn del" id="del-stop">Delete stop</button>
+      </div>
+    </div>
+
+    <!-- Inner Glow -->
+    <div class="sec">
+      <div class="sec-head"><h3>Inner Glow</h3></div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Strength</span><div class="prop-val" id="glow-v">40</div></div>
+        <input type="range" id="glow" min="0" max="100" value="40" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Width</span><div class="prop-val" id="gloww-v">30</div></div>
+        <input type="range" id="gloww" min="1" max="100" value="30" step="1">
+      </div>
+    </div>
+
+    <!-- Perspective -->
+    <div class="sec">
+      <div class="sec-head"><h3>Perspective</h3></div>
+      <div class="tog-row">
+        <span class="prop-label">3D Mode</span>
+        <label class="sw"><input type="checkbox" id="persp-toggle"><span class="sw-t"></span></label>
+      </div>
+    </div>
+
+    <!-- Blocks -->
+    <div class="sec">
+      <div class="sec-head"><h3>Blocks</h3></div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Density</span><div class="prop-val" id="density-v">34</div></div>
+        <input type="range" id="density" min="4" max="200" value="34" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Size</span><div class="prop-val" id="size-v">52</div></div>
+        <input type="range" id="size" min="1" max="100" value="52" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Spread</span><div class="prop-val" id="spread-v">70</div></div>
+        <input type="range" id="spread" min="0" max="100" value="70" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Lane Width</span><div class="prop-val" id="lane-v">100</div></div>
+        <input type="range" id="lane" min="0" max="100" value="100" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Variance</span><div class="prop-val" id="variance-v">46</div></div>
+        <input type="range" id="variance" min="0" max="100" value="46" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Skew</span><div class="prop-val" id="skew-v">91</div></div>
+        <input type="range" id="skew" min="0" max="100" value="91" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Speed</span><div class="prop-val" id="speed-v">74</div></div>
+        <input type="range" id="speed" min="0" max="200" value="74" step="1">
+      </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Opacity</span><div class="prop-val" id="opacity-v">100</div></div>
+        <input type="range" id="opacity" min="0" max="100" value="100" step="1">
+      </div>
+    </div>
+
+    <!-- Shape -->
+    <div class="sec">
+      <div class="sec-head"><h3>Shape</h3></div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Roundness</span><div class="prop-val" id="roundness-v">0</div></div>
+        <input type="range" id="roundness" min="0" max="100" value="0" step="1">
+      </div>
+    </div>
+
+  </div>
+</div>
+
 </div>
 <script>
 const canvas=document.getElementById('c');
 const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
 function resize(){const dpr=window.devicePixelRatio||1;canvas.width=canvas.offsetWidth*dpr;canvas.height=canvas.offsetHeight*dpr;gl.viewport(0,0,canvas.width,canvas.height);}
 resize();window.addEventListener('resize',resize);
+new ResizeObserver(resize).observe(document.getElementById('canvas-area'));
 
 const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_Position=vec4(aPos,0.,1.);}`;
 
@@ -71,8 +269,9 @@ float sdRoundBox(vec2 p,vec2 b,float r){
   return length(max(q,0.))+min(max(q.x,q.y),0.)-r;
 }
 
-vec3 applyGlow(vec3 col,vec2 luv,float strength,float width){
-  float edgeDist=1.-max(abs(luv.x),abs(luv.y));
+vec3 applyGlow(vec3 col,vec2 luv,float strength,float width,float persp){
+  // flat bars are wide in X → glow on short Y edges; 3D bars are wide in Y → glow on short X edges
+  float edgeDist=mix(1.-abs(luv.y), 1.-abs(luv.x), persp);
   float f=strength*smoothstep(width,0.,edgeDist);
   return clamp(col*(1.+f*2.5),0.,1.);
 }
@@ -82,7 +281,6 @@ void main(){
   float aspect=uRes.x/max(uRes.y,.0001);
   float time=uTime*0.01*uSpeed*0.01;
 
-  // 0=flat, 1=full 3D
   float perspective=uFov*.01;
   float vpY=uVPAngle*.01*0.8*perspective;
 
@@ -111,8 +309,6 @@ void main(){
     float sv=mix(1.,mix(.55,1.9,rnd2),uVariance*.01);
     float av=mix(1.,mix(.65,1.6,rnd3),uVariance*.01);
 
-    // flat: bars stacked vertically across screen, each on its own Y lane
-    // 3D: bars on X planes flying toward camera
     float side=mix(-1.,1.,step(.5,rnd2));
     float laneOff=side*mix(laneW,2.6,rnd.x);
     float crossOff=(rnd3-.5)*mix(.08,2.6,spread)*varF;
@@ -123,19 +319,16 @@ void main(){
     halfS3d*=vec2(skewA,1./skewA);
     halfS3d*=vec2(av,1./av);
 
-    // flat bar: width in X screenspace, height in Y screenspace
     float flatH=mix(.004,.04,sv*0.5)*0.8;
     float flatW=mix(.15,.65,rnd2);
-    // Y position: spread across screen
     float flatY=(rnd3-.5)*mix(.1,1.8,spread)*varF+vpY;
-    // X scroll: travel across screen left to right (or right to left)
     float dir=sign(side);
-    float flatX=(fract(travel+rnd.x)-.5)*2.5*dir;
+    // wider range ensures bars are fully off-screen before wrapping (no pop)
+    float flatX=(fract(travel+rnd.x)-.5)*4.5*dir;
 
     float farD=5.4+(pLen*3.1*.42)*2.5;
     float depth=mix(farD,-halfS3d.y-baseSize*2.,travel);
 
-    // ---- 3D ray intersect ----
     float focalLen=mix(3.0,0.3,perspective);
     vec2 screen3d=vec2((uv.x-.5)*aspect,(uv.y-.5)-vpY);
     vec3 ro3=vec3(0.,vpY*focalLen,0.);
@@ -151,8 +344,6 @@ void main(){
       if(sdRoundBox(hitL3d,halfS3d,r3)<=0.) hit3d=true;
     }
 
-    // ---- 2D flat intersect ----
-    // bar center in screen UV space
     vec2 barCenter=vec2(flatX, flatY);
     vec2 barHalf=vec2(flatW, flatH);
     vec2 flatLocal=vec2((uv.x-.5)*aspect, uv.y-.5)-barCenter;
@@ -160,7 +351,6 @@ void main(){
     bool hit2d=sdRoundBox(flatLocal,barHalf,rFlat)<=0.;
     vec2 hitL2d=flatLocal/barHalf;
 
-    // blend between 2D and 3D hit
     bool didHit=mix(hit2d?1.:0., hit3d?1.:0., perspective)>0.5;
     vec2 hitLuv=mix(hitL2d, hitL3d/max(halfS3d,vec2(.0001)), perspective);
     float tHit=mix(
@@ -173,7 +363,8 @@ void main(){
       float hitD=depth+hitL3d.y;
       float farFade=mix(1., 1.-smoothstep(.85,farD,hitD), perspective);
       float aD=travel*(1.35-.35*travel);
-      float a=farFade*mix(.42,1.,aD)*uOpacity*.01;
+      // flat mode: fully opaque (no transparent bars creating seam lines)
+      float a=farFade*mix(1., mix(.42,1.,aD), perspective)*uOpacity*.01;
       if(tHit<nearT){secT=nearT;secAlpha=nearAlpha;secNF=nearNF;secLocalUV=nearLocalUV;hasSec=hasHit;nearT=tHit;nearAlpha=a;nearNF=travel;nearLocalUV=hitLuv;hasHit=true;}
       else if(tHit<secT){secT=tHit;secAlpha=a*.88;secNF=travel;secLocalUV=hitLuv;hasSec=true;}
     }
@@ -182,12 +373,13 @@ void main(){
   vec3 finalColor=vec3(0.);
   if(hasSec){
     vec3 sc=texture2D(uGradTex,vec2(secNF,.5)).rgb*mix(.66,1.,secNF);
-    sc=applyGlow(sc,secLocalUV,uGlow*.01,uGlowW*.01);
-    finalColor=mix(finalColor,sc,secAlpha*.88);
+    sc=applyGlow(sc,secLocalUV,uGlow*.01,uGlowW*.01,perspective);
+    // second hit only in 3D (flat mode: no semi-transparent layering = no seam lines)
+    finalColor=mix(finalColor,sc,secAlpha*.88*perspective);
   }
   if(hasHit){
     vec3 nc=texture2D(uGradTex,vec2(nearNF,.5)).rgb*mix(.7,1.1,nearNF);
-    nc=applyGlow(nc,nearLocalUV,uGlow*.01,uGlowW*.01);
+    nc=applyGlow(nc,nearLocalUV,uGlow*.01,uGlowW*.01,perspective);
     finalColor=mix(finalColor,nc,nearAlpha);
   }
   gl_FragColor=vec4(finalColor,1.);
@@ -240,17 +432,20 @@ uploadGrad();
 const gc=document.getElementById('grad-strip'),gctx=gc.getContext('2d');
 const spSlider=document.getElementById('stop-pos'),spVal=document.getElementById('stop-pos-val'),scPicker=document.getElementById('stop-color');
 function drawGrad(){
-  const W=gc.offsetWidth||400;gc.width=W;gc.height=28;
+  const W=gc.offsetWidth||400;gc.width=W;gc.height=32;
   const s=[...gradStops].sort((a,b)=>a.pos-b.pos);
   const g=gctx.createLinearGradient(0,0,W,0);
   s.forEach(st=>g.addColorStop(st.pos,rgbToHex(...st.color)));
-  gctx.fillStyle=g;gctx.fillRect(0,0,W,28);
+  gctx.fillStyle=g;gctx.fillRect(0,0,W,32);
   gradStops.forEach((st,i)=>{
     const x=st.pos*W;
-    gctx.beginPath();gctx.arc(x,14,i===selStop?8:6,0,Math.PI*2);
-    gctx.fillStyle=rgbToHex(...st.color);gctx.strokeStyle=i===selStop?'#fff':'#888';
+    gctx.beginPath();gctx.arc(x,16,i===selStop?9:6,0,Math.PI*2);
+    gctx.fillStyle=rgbToHex(...st.color);
+    gctx.strokeStyle=i===selStop?'#fff':'rgba(255,255,255,0.5)';
     gctx.lineWidth=i===selStop?2.5:1.5;gctx.fill();gctx.stroke();
   });
+  const sc=document.getElementById('stop-count');
+  if(sc)sc.textContent=gradStops.length;
 }
 drawGrad();window.addEventListener('resize',drawGrad);
 function selS(i){selStop=i;scPicker.value=rgbToHex(...gradStops[i].color);spSlider.value=Math.round(gradStops[i].pos*100);spVal.textContent=spSlider.value+'%';drawGrad();}
@@ -272,13 +467,36 @@ scPicker.addEventListener('input',e=>{gradStops[selStop].color=hexToRgb(e.target
 spSlider.addEventListener('input',e=>{spVal.textContent=e.target.value+'%';gradStops[selStop].pos=parseInt(e.target.value)/100;uploadGrad();drawGrad();});
 document.getElementById('add-stop').addEventListener('click',()=>{gradStops.push({pos:.5,color:[128,128,128]});selStop=gradStops.length-1;uploadGrad();drawGrad();selS(selStop);});
 document.getElementById('del-stop').addEventListener('click',()=>{if(gradStops.length<=2)return;gradStops.splice(selStop,1);selStop=Math.min(selStop,gradStops.length-1);uploadGrad();drawGrad();selS(selStop);});
-const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww','fov','vpangle'];
+
+function updateSliderFill(el){
+  const min=+el.min,max=+el.max,val=+el.value;
+  const pct=(val-min)/(max-min)*100;
+  el.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) 0%,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.1) ${pct}%,rgba(255,255,255,0.1) 100%)`;
+}
+
+const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww'];
 const vals={};
 sliders.forEach(id=>{
   const el=document.getElementById(id),out=document.getElementById(id+'-v');
   vals[id]=parseFloat(el.value);
-  el.addEventListener('input',e=>{vals[id]=parseFloat(e.target.value);out.textContent=e.target.value;});
+  updateSliderFill(el);
+  el.addEventListener('input',e=>{vals[id]=parseFloat(e.target.value);if(out)out.textContent=e.target.value;updateSliderFill(el);});
 });
+
+// perspective toggle — flat (fov=0) vs 3D (fov=60)
+vals.fov = 0;
+vals.vpangle = 0;
+document.getElementById('persp-toggle').addEventListener('change', function(){
+  vals.fov = this.checked ? 60 : 0;
+});
+
+function exportFrame(){
+  const a=document.createElement('a');
+  a.download='bloomfi.png';
+  a.href=canvas.toDataURL('image/png');
+  a.click();
+}
+
 let t=0;
 function frame(){
   t++;
@@ -287,9 +505,11 @@ function frame(){
   gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
   gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
   gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
-  gl.uniform1f(uFov,vals.fov);gl.uniform1f(uVPA,vals.vpangle);
+  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uVPA,0);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
 }
 frame();
 </script>
+</body>
+</html>
