@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v11</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v12</span></div>
   </div>
 </div>
 
@@ -275,6 +275,10 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
         <div class="prop-top"><span class="prop-label">Roundness</span><div class="prop-val" id="roundness-v">0</div></div>
         <input type="range" id="roundness" min="0" max="100" value="0" step="1">
       </div>
+      <div class="prop-row">
+        <div class="prop-top"><span class="prop-label">Angle</span><div class="prop-val" id="angle-v">0</div></div>
+        <input type="range" id="angle" min="-180" max="180" value="0" step="1">
+      </div>
     </div>
 
   </div>
@@ -293,7 +297,7 @@ const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_P
 const frag=`
 precision highp float;
 varying vec2 vUv;
-uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight;
+uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight,uAngle;
 uniform vec2 uRes;
 uniform sampler2D uGradTex;
 const int MAXN=200;
@@ -322,6 +326,11 @@ void main(){
   float time=uTime*0.01*uSpeed*0.01;
   bool isFlat=uFov<1.0;
   float perspective=uFov*.01;
+
+  float cosA=cos(uAngle),sinA=sin(uAngle);
+  vec2 sc=vec2((uv.x-.5)*aspect,uv.y-.5);
+  sc=vec2(cosA*sc.x-sinA*sc.y,sinA*sc.x+cosA*sc.y);
+  uv=vec2(sc.x/aspect+.5,sc.y+.5);
 
   float baseSize=mix(.002,.07,uSize*.01);
   float spread=mix(.25,1.25,uSpread*.01);
@@ -437,7 +446,7 @@ const U=n=>gl.getUniformLocation(prog,n);
 const uTime=U('uTime'),uRes=U('uRes'),uDens=U('uDensity'),uSz=U('uSize'),uSpr=U('uSpread');
 const uLn=U('uLane'),uVr=U('uVariance'),uSk=U('uSkew'),uSp=U('uSpeed');
 const uOp=U('uOpacity'),uRd=U('uRoundness'),uGl=U('uGlow'),uGw=U('uGlowW'),uGP=U('uGlowPos'),uGT=U('uGradTex');
-const uFov=U('uFov'),uLt=U('uLight');
+const uFov=U('uFov'),uLt=U('uLight'),uAng=U('uAngle');
 
 const gradTex=gl.createTexture();
 gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gradTex);
@@ -514,7 +523,7 @@ function updateSliderFill(el){
   el.style.background=`linear-gradient(to right,${hi} 0%,${hi} ${pct}%,${lo} ${pct}%,${lo} 100%)`;
 }
 
-const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww'];
+const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww','angle'];
 const vals={};
 sliders.forEach(id=>{
   const el=document.getElementById(id),out=document.getElementById(id+'-v');
@@ -765,7 +774,7 @@ function frame(){
   gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
   gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
   gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
-  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);
+  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);gl.uniform1f(uAng,(vals.angle||0)*Math.PI/180.);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
 }
