@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v14</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v15</span></div>
   </div>
 </div>
 
@@ -184,6 +184,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
 <!-- RIGHT PANEL -->
 <div id="rp-outer">
   <div id="top-toolbar">
+    <button class="tb-solid-btn" onclick="randomizeSeed()">Randomize ↺</button>
     <button class="tb-solid-btn" id="theme-btn" onclick="toggleTheme()">Light</button>
     <button class="tb-solid-btn" onclick="exportFrame()">Export PNG ↓</button>
     <button class="tb-solid-btn" onclick="exportReactTSX()">Export React TSX ↓</button>
@@ -301,7 +302,7 @@ const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_P
 const frag=`
 precision highp float;
 varying vec2 vUv;
-uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight,uAngle,uLayers;
+uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight,uAngle,uLayers,uSeed;
 uniform vec2 uRes;
 uniform sampler2D uGradTex;
 const int MAXN=200;
@@ -358,7 +359,7 @@ void main(){
   for(int i=0;i<MAXN;i++){
     if(i>=N)break;
     float fi=float(i)+1.;
-    vec2 rnd=hash21(fi*23.17);
+    vec2 rnd=hash21(fi*23.17+uSeed);
     float rnd2=fract((rnd.x+rnd.y)*12.35731);
     float rnd3=fract((rnd.x*5.731+rnd.y*9.137)*4.17321);
     float layD=clamp((float(i)+rnd.x*.75)/max(float(N-1),1.),0.,1.);
@@ -445,7 +446,7 @@ const U=n=>gl.getUniformLocation(prog,n);
 const uTime=U('uTime'),uRes=U('uRes'),uDens=U('uDensity'),uSz=U('uSize'),uSpr=U('uSpread');
 const uLn=U('uLane'),uVr=U('uVariance'),uSk=U('uSkew'),uSp=U('uSpeed');
 const uOp=U('uOpacity'),uRd=U('uRoundness'),uGl=U('uGlow'),uGw=U('uGlowW'),uGP=U('uGlowPos'),uGT=U('uGradTex');
-const uFov=U('uFov'),uLt=U('uLight'),uAng=U('uAngle'),uLay=U('uLayers');
+const uFov=U('uFov'),uLt=U('uLight'),uAng=U('uAngle'),uLay=U('uLayers'),uSd=U('uSeed');
 
 const gradTex=gl.createTexture();
 gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gradTex);
@@ -552,6 +553,8 @@ function toggleTheme(){
 // perspective toggle — flat (fov=0) vs 3D (fov=100, so perspective=1.0 exactly)
 vals.fov = 0;
 vals.layers = 1;
+vals.seed = 0;
+function randomizeSeed(){ vals.seed = Math.random()*1000; }
 document.getElementById('layer-toggle').addEventListener('change', function(){
   vals.layers = this.checked ? 1 : 0;
 });
@@ -777,7 +780,7 @@ function frame(){
   gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
   gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
   gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
-  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);gl.uniform1f(uAng,(vals.angle||0)*Math.PI/180.);gl.uniform1f(uLay,vals.layers);
+  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);gl.uniform1f(uAng,(vals.angle||0)*Math.PI/180.);gl.uniform1f(uLay,vals.layers);gl.uniform1f(uSd,vals.seed||0);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
 }
