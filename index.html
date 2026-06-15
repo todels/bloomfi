@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v15</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v16</span></div>
   </div>
 </div>
 
@@ -184,8 +184,6 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
 <!-- RIGHT PANEL -->
 <div id="rp-outer">
   <div id="top-toolbar">
-    <button class="tb-solid-btn" onclick="randomizeSeed()">Randomize ↺</button>
-    <button class="tb-solid-btn" id="theme-btn" onclick="toggleTheme()">Light</button>
     <button class="tb-solid-btn" onclick="exportFrame()">Export PNG ↓</button>
     <button class="tb-solid-btn" onclick="exportReactTSX()">Export React TSX ↓</button>
   </div>
@@ -233,6 +231,14 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
       <div class="tog-row" style="margin-top:12px">
         <span class="prop-label">Double Layer</span>
         <label class="sw"><input type="checkbox" id="layer-toggle" checked><span class="sw-t"></span></label>
+      </div>
+      <div class="tog-row" style="margin-top:12px">
+        <span class="prop-label">Light Theme</span>
+        <label class="sw"><input type="checkbox" id="theme-toggle"><span class="sw-t"></span></label>
+      </div>
+      <div class="tog-row" style="margin-top:12px">
+        <span class="prop-label">Randomize</span>
+        <button class="stop-btn" onclick="randomizeSeed()">Shuffle ↺</button>
       </div>
     </div>
 
@@ -542,13 +548,11 @@ function updateSliderFillColor(){
     el.style.background=`linear-gradient(to right,${hi} 0%,${hi} ${pct}%,${lo} ${pct}%,${lo} 100%)`;
   });
 }
-function toggleTheme(){
-  vals.light=vals.light>0.5?0:1;
-  const isLight=vals.light>0.5;
-  document.body.classList.toggle('light',isLight);
-  document.getElementById('theme-btn').textContent=isLight?'Dark':'Light';
+document.getElementById('theme-toggle').addEventListener('change',function(){
+  vals.light=this.checked?1:0;
+  document.body.classList.toggle('light',this.checked);
   updateSliderFillColor();
-}
+});
 
 // perspective toggle — flat (fov=0) vs 3D (fov=100, so perspective=1.0 exactly)
 vals.fov = 0;
