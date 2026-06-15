@@ -310,9 +310,10 @@ float sdRoundBox(vec2 p,vec2 b,float r){
 // tipEdge:   distance to the tips (0 at tip)
 // tipFade multiplied so glow smoothly vanishes near each tip end.
 vec3 applyGlow(vec3 col,vec2 luv,float strength,float width,bool isFlat){
+  // glow on the long edges; tipFade lets tips show glow too (min 0.15)
   float shortEdge = isFlat ? (1.-abs(luv.y)) : (1.-abs(luv.x));
   float tipEdge   = isFlat ? (1.-abs(luv.x)) : (1.-abs(luv.y));
-  float tipFade   = smoothstep(0.,0.7,tipEdge);
+  float tipFade   = mix(0.15,1.0,tipEdge);
   float f=strength*smoothstep(width,0.,shortEdge)*tipFade;
   return clamp(col*(1.+f*2.5),0.,1.);
 }
