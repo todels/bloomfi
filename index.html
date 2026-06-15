@@ -277,7 +277,7 @@ float sdRoundBox(vec2 p,vec2 b,float r){
 vec3 applyGlow(vec3 col,vec2 luv,float strength,float width,bool isFlat){
   float shortEdge = isFlat ? (1.-abs(luv.y)) : (1.-abs(luv.x));
   float tipEdge   = isFlat ? (1.-abs(luv.x)) : (1.-abs(luv.y));
-  float tipFade   = smoothstep(0.,0.12,tipEdge);
+  float tipFade   = smoothstep(0.,0.35,tipEdge);
   float f=strength*smoothstep(width,0.,shortEdge)*tipFade;
   return clamp(col*(1.+f*2.5),0.,1.);
 }
