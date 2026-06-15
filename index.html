@@ -109,6 +109,40 @@ input[type=color]{width:32px;height:28px;border:1px solid rgba(255,255,255,.15);
 .sw-t:before{content:'';position:absolute;height:13px;width:13px;left:2px;top:2px;background:rgba(255,255,255,.5);border-radius:50%;transition:.2s}
 .sw input:checked+.sw-t{background:rgba(255,255,255,0.9)}
 .sw input:checked+.sw-t:before{transform:translateX(15px);background:#000}
+
+/* ── LIGHT THEME ── */
+body.light{background:#fff;color:#000}
+body.light #lp-head{background:#f0f0f0;border-color:rgba(0,0,0,0.09);box-shadow:inset 0 1px 0 rgba(0,0,0,0.08)}
+body.light #lp-head svg path{fill:#000}
+body.light .info-card{background:#f0f0f0;border-color:rgba(0,0,0,0.09);box-shadow:inset 0 1px 0 rgba(0,0,0,0.08)}
+body.light .info-card-title{color:rgba(0,0,0,.6)}
+body.light .info-card-body{color:rgba(0,0,0,.4)}
+body.light .stat-label{color:rgba(0,0,0,.35)}
+body.light .stat-val{color:rgba(0,0,0,.55)}
+body.light .divider{border-color:rgba(0,0,0,.08)}
+body.light #center{background:#fff}
+body.light #rp-outer{background:#f0f0f0;border-color:rgba(0,0,0,0.1);box-shadow:1px 0 0 rgba(0,0,0,0.1)}
+body.light #top-toolbar{border-color:rgba(0,0,0,.08)}
+body.light .tb-solid-btn{background:#000;color:#fff;border-color:rgba(0,0,0,0.15)}
+body.light .tb-solid-btn:hover{background:rgba(0,0,0,0.82)}
+body.light .sec{border-color:rgba(0,0,0,.07)}
+body.light .sec-head h3{color:rgba(0,0,0,.35)}
+body.light .prop-label{color:rgba(0,0,0,.5)}
+body.light .prop-val{background:rgba(0,0,0,0.05);border-color:rgba(0,0,0,0.11);color:#000}
+body.light input[type=range]{background:rgba(0,0,0,0.1)}
+body.light input[type=range]::-webkit-slider-thumb{background:#000;border-color:rgba(255,255,255,0.1)}
+body.light input[type=range]::-moz-range-thumb{background:#000}
+body.light #grad-strip{border-color:rgba(0,0,0,0.11)}
+body.light .stop-editor-row label{color:rgba(0,0,0,.45)}
+body.light #stop-pos-val{color:rgba(0,0,0,.5)}
+body.light .stop-btn{border-color:rgba(0,0,0,.12);background:rgba(0,0,0,0.04);color:rgba(0,0,0,.55)}
+body.light .stop-btn:hover{color:#000;background:rgba(0,0,0,0.09)}
+body.light .stop-btn.del:hover{color:#cc2222;border-color:rgba(180,0,0,.2);background:rgba(180,0,0,.06)}
+body.light .sw-t{background:rgba(0,0,0,.1);border-color:rgba(0,0,0,.12)}
+body.light .sw-t:before{background:rgba(0,0,0,.45)}
+body.light .sw input:checked+.sw-t{background:rgba(0,0,0,0.82)}
+body.light .sw input:checked+.sw-t:before{background:#fff}
+body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
 </style>
 </head>
 <body>
@@ -149,6 +183,7 @@ input[type=color]{width:32px;height:28px;border:1px solid rgba(255,255,255,.15);
 <!-- RIGHT PANEL -->
 <div id="rp-outer">
   <div id="top-toolbar">
+    <button class="tb-solid-btn" id="theme-btn" onclick="toggleTheme()">Light</button>
     <button class="tb-solid-btn" onclick="exportFrame()">Export PNG ↓</button>
     <button class="tb-solid-btn" onclick="exportReactTSX()">Export React TSX ↓</button>
   </div>
@@ -257,7 +292,7 @@ const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_P
 const frag=`
 precision highp float;
 varying vec2 vUv;
-uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov;
+uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight;
 uniform vec2 uRes;
 uniform sampler2D uGradTex;
 const int MAXN=200;
@@ -387,6 +422,7 @@ void main(){
     nc=applyGlow(nc,nearLocalUV,uGlow*.01,uGlowW*.01,isFlat);
     finalColor=mix(finalColor,nc,nearAlpha);
   }
+  if(uLight>0.5)finalColor=1.-finalColor;
   gl_FragColor=vec4(finalColor,1.);
 }`;
 
@@ -404,7 +440,7 @@ const U=n=>gl.getUniformLocation(prog,n);
 const uTime=U('uTime'),uRes=U('uRes'),uDens=U('uDensity'),uSz=U('uSize'),uSpr=U('uSpread');
 const uLn=U('uLane'),uVr=U('uVariance'),uSk=U('uSkew'),uSp=U('uSpeed');
 const uOp=U('uOpacity'),uRd=U('uRoundness'),uGl=U('uGlow'),uGw=U('uGlowW'),uGT=U('uGradTex');
-const uFov=U('uFov');
+const uFov=U('uFov'),uLt=U('uLight');
 
 const gradTex=gl.createTexture();
 gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gradTex);
@@ -474,9 +510,11 @@ document.getElementById('add-stop').addEventListener('click',()=>{gradStops.push
 document.getElementById('del-stop').addEventListener('click',()=>{if(gradStops.length<=2)return;gradStops.splice(selStop,1);selStop=Math.min(selStop,gradStops.length-1);uploadGrad();drawGrad();selS(selStop);});
 
 function updateSliderFill(el){
-  const min=+el.min,max=+el.max,val=+el.value;
-  const pct=(val-min)/(max-min)*100;
-  el.style.background=`linear-gradient(to right,rgba(255,255,255,0.55) 0%,rgba(255,255,255,0.55) ${pct}%,rgba(255,255,255,0.1) ${pct}%,rgba(255,255,255,0.1) 100%)`;
+  const isLight=vals.light>0.5;
+  const hi=isLight?'rgba(0,0,0,0.55)':'rgba(255,255,255,0.55)';
+  const lo=isLight?'rgba(0,0,0,0.1)':'rgba(255,255,255,0.1)';
+  const min=+el.min,max=+el.max,val=+el.value,pct=(val-min)/(max-min)*100;
+  el.style.background=`linear-gradient(to right,${hi} 0%,${hi} ${pct}%,${lo} ${pct}%,${lo} 100%)`;
 }
 
 const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww'];
@@ -487,6 +525,24 @@ sliders.forEach(id=>{
   updateSliderFill(el);
   el.addEventListener('input',e=>{vals[id]=parseFloat(e.target.value);if(out)out.textContent=e.target.value;updateSliderFill(el);});
 });
+
+vals.light = 0;
+function updateSliderFillColor(){
+  const isLight=vals.light>0.5;
+  const hi=isLight?'rgba(0,0,0,0.55)':'rgba(255,255,255,0.55)';
+  const lo=isLight?'rgba(0,0,0,0.1)':'rgba(255,255,255,0.1)';
+  document.querySelectorAll('input[type=range]').forEach(el=>{
+    const min=+el.min,max=+el.max,val=+el.value,pct=(val-min)/(max-min)*100;
+    el.style.background=`linear-gradient(to right,${hi} 0%,${hi} ${pct}%,${lo} ${pct}%,${lo} 100%)`;
+  });
+}
+function toggleTheme(){
+  vals.light=vals.light>0.5?0:1;
+  const isLight=vals.light>0.5;
+  document.body.classList.toggle('light',isLight);
+  document.getElementById('theme-btn').textContent=isLight?'Dark':'Light';
+  updateSliderFillColor();
+}
 
 // perspective toggle — flat (fov=0) vs 3D (fov=100, so perspective=1.0 exactly)
 vals.fov = 0;
@@ -712,7 +768,7 @@ function frame(){
   gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
   gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
   gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
-  gl.uniform1f(uFov,vals.fov||0);
+  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
 }
