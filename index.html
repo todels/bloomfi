@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v10</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v11</span></div>
   </div>
 </div>
 
@@ -283,7 +283,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
 </div>
 <script>
 const canvas=document.getElementById('c');
-const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+const gl=canvas.getContext('webgl',{preserveDrawingBuffer:true})||canvas.getContext('experimental-webgl',{preserveDrawingBuffer:true});
 function resize(){const dpr=window.devicePixelRatio||1;canvas.width=canvas.offsetWidth*dpr;canvas.height=canvas.offsetHeight*dpr;gl.viewport(0,0,canvas.width,canvas.height);}
 resize();window.addEventListener('resize',resize);
 new ResizeObserver(resize).observe(document.getElementById('canvas-area'));
