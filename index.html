@@ -161,6 +161,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
 <path d="M100.543 14.9733V0.399289H102.94V14.9733H100.543ZM102.54 8.68451V6.60822H108.592V8.68451H102.54ZM102.54 2.47559V0.399289H108.891V2.47559H102.54Z" fill="white"/>
 <path d="M110.663 14.9733V4.21249H113V14.9733H110.663ZM109.086 6.00928V4.21249H113V6.00928H109.086ZM111.422 2.71516C110.943 2.71516 110.583 2.58872 110.344 2.33584C110.117 2.08295 110.004 1.75687 110.004 1.35758C110.004 0.971601 110.117 0.652171 110.344 0.399289C110.583 0.133096 110.943 0 111.422 0C111.915 0 112.274 0.133096 112.501 0.399289C112.74 0.652171 112.86 0.971601 112.86 1.35758C112.86 1.75687 112.74 2.08295 112.501 2.33584C112.274 2.58872 111.915 2.71516 111.422 2.71516Z" fill="white"/>
     </svg>
+    <span id="ver-label" style="margin-left:auto;font-size:10px;font-weight:500;color:rgba(255,255,255,.2);letter-spacing:.06em">v8</span>
   </div>
 
   <div class="info-card">
@@ -310,11 +311,9 @@ float sdRoundBox(vec2 p,vec2 b,float r){
 // tipEdge:   distance to the tips (0 at tip)
 // tipFade multiplied so glow smoothly vanishes near each tip end.
 vec3 applyGlow(vec3 col,vec2 luv,float strength,float width,bool isFlat){
-  // glow on the long edges; tipFade lets tips show glow too (min 0.15)
-  float shortEdge = isFlat ? (1.-abs(luv.y)) : (1.-abs(luv.x));
-  float tipEdge   = isFlat ? (1.-abs(luv.x)) : (1.-abs(luv.y));
-  float tipFade   = mix(0.15,1.0,tipEdge);
-  float f=strength*smoothstep(width,0.,shortEdge)*tipFade;
+  // glow concentrated at bar ends: use the tip axis (short ends) not the long sides
+  float edgeDist = isFlat ? (1.-abs(luv.x)) : (1.-abs(luv.y));
+  float f=strength*smoothstep(width,0.,edgeDist);
   return clamp(col*(1.+f*2.5),0.,1.);
 }
 
