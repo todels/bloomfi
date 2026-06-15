@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v13</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v14</span></div>
   </div>
 </div>
 
@@ -228,6 +228,10 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
       <div class="tog-row">
         <span class="prop-label">3D Mode</span>
         <label class="sw"><input type="checkbox" id="persp-toggle"><span class="sw-t"></span></label>
+      </div>
+      <div class="tog-row" style="margin-top:12px">
+        <span class="prop-label">Double Layer</span>
+        <label class="sw"><input type="checkbox" id="layer-toggle" checked><span class="sw-t"></span></label>
       </div>
     </div>
 
@@ -297,7 +301,7 @@ const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_P
 const frag=`
 precision highp float;
 varying vec2 vUv;
-uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight,uAngle;
+uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight,uAngle,uLayers;
 uniform vec2 uRes;
 uniform sampler2D uGradTex;
 const int MAXN=200;
@@ -412,7 +416,7 @@ void main(){
     }
   }
 
-  if(hasSec&&!isFlat){
+  if(hasSec&&!isFlat&&uLayers>0.5){
     float st=uLight>0.5?1.-secNF:secNF;
     vec3 sc=texture2D(uGradTex,vec2(st,.5)).rgb*mix(.66,1.,st);
     sc=applyGlow(sc,secSDF,secMinH,uGlow*.01,uGlowW*.01);
@@ -441,7 +445,7 @@ const U=n=>gl.getUniformLocation(prog,n);
 const uTime=U('uTime'),uRes=U('uRes'),uDens=U('uDensity'),uSz=U('uSize'),uSpr=U('uSpread');
 const uLn=U('uLane'),uVr=U('uVariance'),uSk=U('uSkew'),uSp=U('uSpeed');
 const uOp=U('uOpacity'),uRd=U('uRoundness'),uGl=U('uGlow'),uGw=U('uGlowW'),uGP=U('uGlowPos'),uGT=U('uGradTex');
-const uFov=U('uFov'),uLt=U('uLight'),uAng=U('uAngle');
+const uFov=U('uFov'),uLt=U('uLight'),uAng=U('uAngle'),uLay=U('uLayers');
 
 const gradTex=gl.createTexture();
 gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gradTex);
@@ -547,6 +551,10 @@ function toggleTheme(){
 
 // perspective toggle — flat (fov=0) vs 3D (fov=100, so perspective=1.0 exactly)
 vals.fov = 0;
+vals.layers = 1;
+document.getElementById('layer-toggle').addEventListener('change', function(){
+  vals.layers = this.checked ? 1 : 0;
+});
 document.getElementById('persp-toggle').addEventListener('change', function(){
   vals.fov = this.checked ? 100 : 0;
 });
@@ -769,7 +777,7 @@ function frame(){
   gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
   gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
   gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
-  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);gl.uniform1f(uAng,(vals.angle||0)*Math.PI/180.);
+  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);gl.uniform1f(uAng,(vals.angle||0)*Math.PI/180.);gl.uniform1f(uLay,vals.layers);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
 }
