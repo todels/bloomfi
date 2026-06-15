@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v12</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v13</span></div>
   </div>
 </div>
 
@@ -302,7 +302,11 @@ uniform vec2 uRes;
 uniform sampler2D uGradTex;
 const int MAXN=200;
 
-vec2 hash21(float n){return fract(sin(vec2(n,n+17.)*vec2(127.1,311.7))*43758.5453);}
+// sin-free hash — avoids expensive trig on GPU
+vec2 hash21(float n){
+  n=fract(n*0.1031);n*=n+33.33;n*=n+n;
+  return fract(vec2(n,n*0.1031+n));
+}
 
 float sdRoundBox(vec2 p,vec2 b,float r){
   r=min(r,min(b.x,b.y));
@@ -310,13 +314,9 @@ float sdRoundBox(vec2 p,vec2 b,float r){
   return length(max(q,0.))+min(max(q.x,q.y),0.)-r;
 }
 
-// True inner glow: uses sdRoundBox so glow follows all 4 sides and respects roundness.
-// innerDist = how far from the edge we are (positive = inside, 0 = on edge).
-// width is scaled by min(b) so the slider feels consistent across bar sizes.
-vec3 applyGlow(vec3 col,vec2 p,vec2 b,float r,float strength,float width){
-  float innerDist=-sdRoundBox(p,b,r);
-  float scaledW=width*min(b.x,b.y);
-  float f=strength*smoothstep(scaledW,0.,innerDist);
+// innerDist cached from hit detection — no second sdRoundBox call here
+vec3 applyGlow(vec3 col,float innerDist,float minHalf,float strength,float width){
+  float f=strength*smoothstep(width*minHalf,0.,innerDist);
   return clamp(col*(1.+f*3.),0.,1.);
 }
 
@@ -341,12 +341,15 @@ void main(){
 
   vec3 finalColor=uLight>0.5?vec3(1.):vec3(0.);
   float nearT=1e9,secT=1e9;
-  float nearAlpha=0.,secAlpha=0.;
-  float nearNF=0.,secNF=0.;
-  vec2 nearLocal=vec2(0.),secLocal=vec2(0.);
-  vec2 nearHalf=vec2(1.),secHalf=vec2(1.);
-  float nearR=0.,secR=0.;
+  float nearAlpha=0.,secAlpha=0.,nearNF=0.,secNF=0.;
+  float nearSDF=0.,secSDF=0.,nearMinH=1.,secMinH=1.;
   bool hasHit=false,hasSec=false;
+
+  // precompute per-pixel screen pos for 3D (flat recalculates per bar due to rotation already applied)
+  vec2 screenPos=vec2((uv.x-.5)*aspect,uv.y-.5);
+  float focalLen=mix(3.0,0.3,perspective);
+  vec3 rd3=normalize(vec3(screenPos,focalLen));
+  float safeRdx=sign(rd3.x)*max(abs(rd3.x),.0001);
 
   for(int i=0;i<MAXN;i++){
     if(i>=N)break;
@@ -357,62 +360,54 @@ void main(){
     float layD=clamp((float(i)+rnd.x*.75)/max(float(N-1),1.),0.,1.);
     float travel=fract(rnd.y+time*mix(.18,1.,layD));
     float sv=mix(1.,mix(.55,1.9,rnd2),uVariance*.01);
-    float av=mix(1.,mix(.65,1.6,rnd3),uVariance*.01);
     float side=mix(-1.,1.,step(.5,rnd2));
     float dir=sign(side);
 
     bool didHit=false;
-    vec2 hitLocal=vec2(0.),hitHalf=vec2(1.);
-    float hitR=0.,tHit=1e8,hitAlpha=0.,hitNF=0.;
+    float tHit=1e8,hitAlpha=0.,hitNF=0.,hitSDF=0.,hitMinH=1.;
 
     if(isFlat){
       float flatH=baseSize*sv*0.5;
       float flatW=baseSize*mix(4.,18.,rnd2);
       float flatY=(rnd3-.5)*mix(.1,1.8,uSpread*.01)*varF;
-      float travelRange=(aspect+flatW*2.+0.4)*2.;
-      float flatX=(fract(travel+rnd.x)-.5)*travelRange*dir;
+      float flatX=(fract(travel+rnd.x)-.5)*(aspect+flatW*2.+0.4)*2.*dir;
       vec2 barHalf=vec2(flatW,flatH);
-      vec2 flatLocal=vec2((uv.x-.5)*aspect,uv.y-.5)-vec2(flatX,flatY);
-      float rFlat=mix(0.,min(barHalf.x,barHalf.y),uRoundness*.01);
-      if(sdRoundBox(flatLocal,barHalf,rFlat)<=0.){
-        didHit=true; hitLocal=flatLocal; hitHalf=barHalf; hitR=rFlat;
+      vec2 flatLocal=screenPos-vec2(flatX,flatY);
+      float rFlat=mix(0.,min(flatW,flatH),uRoundness*.01);
+      float sdf=sdRoundBox(flatLocal,barHalf,rFlat);
+      if(sdf<=0.){
+        didHit=true; hitSDF=-sdf; hitMinH=flatH;
         tHit=0.5+rnd.x*0.5; hitAlpha=uOpacity*.01; hitNF=travel;
       }
     } else {
+      float av=mix(1.,mix(.65,1.6,rnd3),uVariance*.01);
       float laneOff=side*mix(laneW,2.6,rnd.x);
       float crossOff=(rnd3-.5)*mix(.08,2.6,spread)*varF;
       float pThick=baseSize*mix(1.1,2.6,sv);
       float pLen=baseSize*mix(5.,13.,sv)*mix(1.15,3.2,rnd2);
-      vec2 halfS3d=vec2(pThick,pLen)*vec2(.52,3.1);
-      halfS3d*=vec2(skewA,1./skewA);halfS3d*=vec2(av,1./av);
+      vec2 halfS3d=vec2(pThick,pLen)*vec2(.52,3.1)*vec2(skewA,1./skewA)*vec2(av,1./av);
       float farD=5.4+(pLen*3.1*.42)*2.5;
       float depth=mix(farD,-halfS3d.y-baseSize*2.,travel);
-      float focalLen=mix(3.0,0.3,perspective);
-      vec2 screen3d=vec2((uv.x-.5)*aspect,(uv.y-.5));
-      vec3 rd3=normalize(vec3(screen3d,focalLen));
-      float safeRdx=sign(rd3.x)*max(abs(rd3.x),.0001);
       float tHit3=laneOff/safeRdx;
       if(tHit3>0.){
-        vec3 hit=rd3*tHit3;
-        vec2 hitL3d=vec2(hit.y-crossOff,hit.z-depth);
+        vec2 hitL3d=vec2(rd3.y*tHit3-crossOff,rd3.z*tHit3-depth);
         float r3=mix(0.,min(halfS3d.x,halfS3d.y),uRoundness*.01);
-        if(sdRoundBox(hitL3d,halfS3d,r3)<=0.){
-          didHit=true; hitLocal=hitL3d; hitHalf=halfS3d; hitR=r3;
+        float sdf=sdRoundBox(hitL3d,halfS3d,r3);
+        if(sdf<=0.){
+          didHit=true; hitSDF=-sdf; hitMinH=halfS3d.x;
           tHit=tHit3; hitNF=travel;
-          float hitD=depth+hitL3d.y;
-          float farFade=1.-smoothstep(.85,farD,hitD);
-          float aD=travel*(1.35-.35*travel);
-          hitAlpha=farFade*mix(.42,1.,aD)*uOpacity*.01;
+          float farFade=1.-smoothstep(.85,farD,depth+hitL3d.y);
+          hitAlpha=farFade*mix(.42,1.,travel*(1.35-.35*travel))*uOpacity*.01;
         }
       }
     }
 
     if(didHit){
       if(tHit<nearT){
-        secT=nearT;secAlpha=nearAlpha;secNF=nearNF;secLocal=nearLocal;secHalf=nearHalf;secR=nearR;hasSec=hasHit;
-        nearT=tHit;nearAlpha=hitAlpha;nearNF=hitNF;nearLocal=hitLocal;nearHalf=hitHalf;nearR=hitR;hasHit=true;
+        secT=nearT;secAlpha=nearAlpha;secNF=nearNF;secSDF=nearSDF;secMinH=nearMinH;hasSec=hasHit;
+        nearT=tHit;nearAlpha=hitAlpha;nearNF=hitNF;nearSDF=hitSDF;nearMinH=hitMinH;hasHit=true;
       } else if(tHit<secT){
-        secT=tHit;secAlpha=hitAlpha*.88;secNF=hitNF;secLocal=hitLocal;secHalf=hitHalf;secR=hitR;hasSec=true;
+        secT=tHit;secAlpha=hitAlpha*.88;secNF=hitNF;secSDF=hitSDF;secMinH=hitMinH;hasSec=true;
       }
     }
   }
@@ -420,13 +415,13 @@ void main(){
   if(hasSec&&!isFlat){
     float st=uLight>0.5?1.-secNF:secNF;
     vec3 sc=texture2D(uGradTex,vec2(st,.5)).rgb*mix(.66,1.,st);
-    sc=applyGlow(sc,secLocal,secHalf,secR,uGlow*.01,uGlowW*.01);
+    sc=applyGlow(sc,secSDF,secMinH,uGlow*.01,uGlowW*.01);
     finalColor=mix(finalColor,sc,secAlpha*.88);
   }
   if(hasHit){
     float nt=uLight>0.5?1.-nearNF:nearNF;
     vec3 nc=texture2D(uGradTex,vec2(nt,.5)).rgb*mix(.7,1.1,nt);
-    nc=applyGlow(nc,nearLocal,nearHalf,nearR,uGlow*.01,uGlowW*.01);
+    nc=applyGlow(nc,nearSDF,nearMinH,uGlow*.01,uGlowW*.01);
     finalColor=mix(finalColor,nc,nearAlpha);
   }
   gl_FragColor=vec4(finalColor,1.);
