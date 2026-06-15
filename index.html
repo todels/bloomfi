@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v9</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v10</span></div>
   </div>
 </div>
 
@@ -219,10 +219,6 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
       <div class="prop-row">
         <div class="prop-top"><span class="prop-label">Width</span><div class="prop-val" id="gloww-v">30</div></div>
         <input type="range" id="gloww" min="1" max="100" value="30" step="1">
-      </div>
-      <div class="prop-row">
-        <div class="prop-top"><span class="prop-label">Position</span><div class="prop-val" id="glowpos-v">0</div></div>
-        <input type="range" id="glowpos" min="0" max="100" value="0" step="1">
       </div>
     </div>
 
@@ -297,7 +293,7 @@ const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_P
 const frag=`
 precision highp float;
 varying vec2 vUv;
-uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uGlowPos,uFov,uLight;
+uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight;
 uniform vec2 uRes;
 uniform sampler2D uGradTex;
 const int MAXN=200;
@@ -310,17 +306,14 @@ float sdRoundBox(vec2 p,vec2 b,float r){
   return length(max(q,0.))+min(max(q.x,q.y),0.)-r;
 }
 
-// Glow that runs along the full bar length and tapers only at the very tips.
-// shortEdge: distance to the long edges (0 at edge, 1 at center-of-short-axis)
-// tipEdge:   distance to the tips (0 at tip)
-// tipFade multiplied so glow smoothly vanishes near each tip end.
-vec3 applyGlow(vec3 col,vec2 luv,float strength,float width,bool isFlat){
-  // pos=0: glow at tips/ends; pos=1: glow along long sides
-  float tipDist  = isFlat ? (1.-abs(luv.x)) : (1.-abs(luv.y));
-  float sideDist = isFlat ? (1.-abs(luv.y)) : (1.-abs(luv.x));
-  float edgeDist = mix(tipDist, sideDist, uGlowPos*.01);
-  float f=strength*smoothstep(width,0.,edgeDist);
-  return clamp(col*(1.+f*2.5),0.,1.);
+// True inner glow: uses sdRoundBox so glow follows all 4 sides and respects roundness.
+// innerDist = how far from the edge we are (positive = inside, 0 = on edge).
+// width is scaled by min(b) so the slider feels consistent across bar sizes.
+vec3 applyGlow(vec3 col,vec2 p,vec2 b,float r,float strength,float width){
+  float innerDist=-sdRoundBox(p,b,r);
+  float scaledW=width*min(b.x,b.y);
+  float f=strength*smoothstep(scaledW,0.,innerDist);
+  return clamp(col*(1.+f*3.),0.,1.);
 }
 
 void main(){
@@ -341,7 +334,9 @@ void main(){
   float nearT=1e9,secT=1e9;
   float nearAlpha=0.,secAlpha=0.;
   float nearNF=0.,secNF=0.;
-  vec2 nearLocalUV=vec2(0.),secLocalUV=vec2(0.);
+  vec2 nearLocal=vec2(0.),secLocal=vec2(0.);
+  vec2 nearHalf=vec2(1.),secHalf=vec2(1.);
+  float nearR=0.,secR=0.;
   bool hasHit=false,hasSec=false;
 
   for(int i=0;i<MAXN;i++){
@@ -358,52 +353,43 @@ void main(){
     float dir=sign(side);
 
     bool didHit=false;
-    vec2 hitLuv=vec2(0.);
-    float tHit=1e8;
-    float hitAlpha=0.;
+    vec2 hitLocal=vec2(0.),hitHalf=vec2(1.);
+    float hitR=0.,tHit=1e8,hitAlpha=0.,hitNF=0.;
 
     if(isFlat){
-      // ── FLAT only — skip all 3D ray math ───────────────
       float flatH=baseSize*sv*0.5;
       float flatW=baseSize*mix(4.,18.,rnd2);
       float flatY=(rnd3-.5)*mix(.1,1.8,uSpread*.01)*varF;
-      // travel range must be wide enough that wrap never happens while bar is on screen
       float travelRange=(aspect+flatW*2.+0.4)*2.;
       float flatX=(fract(travel+rnd.x)-.5)*travelRange*dir;
       vec2 barHalf=vec2(flatW,flatH);
       vec2 flatLocal=vec2((uv.x-.5)*aspect,uv.y-.5)-vec2(flatX,flatY);
       float rFlat=mix(0.,min(barHalf.x,barHalf.y),uRoundness*.01);
       if(sdRoundBox(flatLocal,barHalf,rFlat)<=0.){
-        didHit=true;
-        hitLuv=flatLocal/barHalf;
-        tHit=0.5+rnd.x*0.5;
-        hitAlpha=uOpacity*.01;
+        didHit=true; hitLocal=flatLocal; hitHalf=barHalf; hitR=rFlat;
+        tHit=0.5+rnd.x*0.5; hitAlpha=uOpacity*.01; hitNF=travel;
       }
     } else {
-      // ── 3D only — skip all flat math ───────────────────
       float laneOff=side*mix(laneW,2.6,rnd.x);
       float crossOff=(rnd3-.5)*mix(.08,2.6,spread)*varF;
       float pThick=baseSize*mix(1.1,2.6,sv);
       float pLen=baseSize*mix(5.,13.,sv)*mix(1.15,3.2,rnd2);
       vec2 halfS3d=vec2(pThick,pLen)*vec2(.52,3.1);
-      halfS3d*=vec2(skewA,1./skewA);
-      halfS3d*=vec2(av,1./av);
+      halfS3d*=vec2(skewA,1./skewA);halfS3d*=vec2(av,1./av);
       float farD=5.4+(pLen*3.1*.42)*2.5;
       float depth=mix(farD,-halfS3d.y-baseSize*2.,travel);
       float focalLen=mix(3.0,0.3,perspective);
       vec2 screen3d=vec2((uv.x-.5)*aspect,(uv.y-.5));
-      vec3 ro3=vec3(0.,0.,0.);
       vec3 rd3=normalize(vec3(screen3d,focalLen));
       float safeRdx=sign(rd3.x)*max(abs(rd3.x),.0001);
-      float tHit3=(laneOff-ro3.x)/safeRdx;
+      float tHit3=laneOff/safeRdx;
       if(tHit3>0.){
-        vec3 hit=ro3+rd3*tHit3;
+        vec3 hit=rd3*tHit3;
         vec2 hitL3d=vec2(hit.y-crossOff,hit.z-depth);
         float r3=mix(0.,min(halfS3d.x,halfS3d.y),uRoundness*.01);
         if(sdRoundBox(hitL3d,halfS3d,r3)<=0.){
-          didHit=true;
-          hitLuv=hitL3d/max(halfS3d,vec2(.0001));
-          tHit=tHit3;
+          didHit=true; hitLocal=hitL3d; hitHalf=halfS3d; hitR=r3;
+          tHit=tHit3; hitNF=travel;
           float hitD=depth+hitL3d.y;
           float farFade=1.-smoothstep(.85,farD,hitD);
           float aD=travel*(1.35-.35*travel);
@@ -413,21 +399,25 @@ void main(){
     }
 
     if(didHit){
-      if(tHit<nearT){secT=nearT;secAlpha=nearAlpha;secNF=nearNF;secLocalUV=nearLocalUV;hasSec=hasHit;nearT=tHit;nearAlpha=hitAlpha;nearNF=travel;nearLocalUV=hitLuv;hasHit=true;}
-      else if(tHit<secT){secT=tHit;secAlpha=hitAlpha*.88;secNF=travel;secLocalUV=hitLuv;hasSec=true;}
+      if(tHit<nearT){
+        secT=nearT;secAlpha=nearAlpha;secNF=nearNF;secLocal=nearLocal;secHalf=nearHalf;secR=nearR;hasSec=hasHit;
+        nearT=tHit;nearAlpha=hitAlpha;nearNF=hitNF;nearLocal=hitLocal;nearHalf=hitHalf;nearR=hitR;hasHit=true;
+      } else if(tHit<secT){
+        secT=tHit;secAlpha=hitAlpha*.88;secNF=hitNF;secLocal=hitLocal;secHalf=hitHalf;secR=hitR;hasSec=true;
+      }
     }
   }
 
   if(hasSec&&!isFlat){
     float st=uLight>0.5?1.-secNF:secNF;
     vec3 sc=texture2D(uGradTex,vec2(st,.5)).rgb*mix(.66,1.,st);
-    sc=applyGlow(sc,secLocalUV,uGlow*.01,uGlowW*.01,isFlat);
+    sc=applyGlow(sc,secLocal,secHalf,secR,uGlow*.01,uGlowW*.01);
     finalColor=mix(finalColor,sc,secAlpha*.88);
   }
   if(hasHit){
     float nt=uLight>0.5?1.-nearNF:nearNF;
     vec3 nc=texture2D(uGradTex,vec2(nt,.5)).rgb*mix(.7,1.1,nt);
-    nc=applyGlow(nc,nearLocalUV,uGlow*.01,uGlowW*.01,isFlat);
+    nc=applyGlow(nc,nearLocal,nearHalf,nearR,uGlow*.01,uGlowW*.01);
     finalColor=mix(finalColor,nc,nearAlpha);
   }
   gl_FragColor=vec4(finalColor,1.);
@@ -524,7 +514,7 @@ function updateSliderFill(el){
   el.style.background=`linear-gradient(to right,${hi} 0%,${hi} ${pct}%,${lo} ${pct}%,${lo} 100%)`;
 }
 
-const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww','glowpos'];
+const sliders=['density','size','spread','lane','variance','skew','speed','opacity','roundness','glow','gloww'];
 const vals={};
 sliders.forEach(id=>{
   const el=document.getElementById(id),out=document.getElementById(id+'-v');
@@ -774,7 +764,7 @@ function frame(){
   gl.uniform1f(uDens,vals.density);gl.uniform1f(uSz,vals.size);gl.uniform1f(uSpr,vals.spread);
   gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
   gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
-  gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);gl.uniform1f(uGP,vals.glowpos||0);
+  gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
   gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
