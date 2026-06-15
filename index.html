@@ -331,6 +331,7 @@ void main(){
   float varF=mix(.45,1.15,uVariance*.01);
   int N=int(uDensity);
 
+  vec3 finalColor=uLight>0.5?vec3(1.):vec3(0.);
   float nearT=1e9,secT=1e9;
   float nearAlpha=0.,secAlpha=0.;
   float nearNF=0.,secNF=0.;
@@ -411,18 +412,18 @@ void main(){
     }
   }
 
-  vec3 finalColor=vec3(0.);
   if(hasSec&&!isFlat){
-    vec3 sc=texture2D(uGradTex,vec2(secNF,.5)).rgb*mix(.66,1.,secNF);
+    float st=uLight>0.5?1.-secNF:secNF;
+    vec3 sc=texture2D(uGradTex,vec2(st,.5)).rgb*mix(.66,1.,st);
     sc=applyGlow(sc,secLocalUV,uGlow*.01,uGlowW*.01,isFlat);
     finalColor=mix(finalColor,sc,secAlpha*.88);
   }
   if(hasHit){
-    vec3 nc=texture2D(uGradTex,vec2(nearNF,.5)).rgb*mix(.7,1.1,nearNF);
+    float nt=uLight>0.5?1.-nearNF:nearNF;
+    vec3 nc=texture2D(uGradTex,vec2(nt,.5)).rgb*mix(.7,1.1,nt);
     nc=applyGlow(nc,nearLocalUV,uGlow*.01,uGlowW*.01,isFlat);
     finalColor=mix(finalColor,nc,nearAlpha);
   }
-  if(uLight>0.5)finalColor=1.-finalColor;
   gl_FragColor=vec4(finalColor,1.);
 }`;
 
