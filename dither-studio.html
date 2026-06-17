@@ -392,6 +392,9 @@ const dither = {
   }
 };
 
+const colorExclusions = new Set(); // "r,g,b" keys
+let renderedColorSet = new Set();  // populated each render
+
 const BLEND_MODES = [
   ['source-over','normal'],['multiply','multiply'],['screen','screen'],
   ['overlay','overlay'],['soft-light','soft light'],['hard-light','hard light'],
@@ -463,6 +466,7 @@ function loadFile(file){
       img.onload=()=>{
         const name=file.name.replace(/\.[^.]+$/,'').slice(0,22)||'Image';
         sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name};
+        colorExclusions.clear();renderedColorSet=new Set();
         updateSourceLabel(name);
         selItem='dither';
         refreshAll();URL.revokeObjectURL(url);
@@ -476,6 +480,7 @@ function loadFile(file){
     img.onload=()=>{
       const name=file.name.replace(/\.[^.]+$/,'').slice(0,22)||'Image';
       sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name};
+      colorExclusions.clear();renderedColorSet=new Set();
       updateSourceLabel(name);
       selItem='dither';
       refreshAll();URL.revokeObjectURL(url);
@@ -672,12 +677,26 @@ function doRender(){
       return hsl2rgb(hh,s,l);
     }
 
+    const renderLUT=dither.gm.on?buildLUT(dither.gm.stops):null;
+    renderedColorSet=new Set();
+
+    function finalBarColor(ar,ag,ab){
+      if(!renderLUT)return[ar,ag,ab];
+      const lum=0.299*ar+0.587*ag+0.114*ab|0;
+      const li=dither.gm.flip?(255-lum):lum;
+      return blendPx([ar,ag,ab],[renderLUT[li*3],renderLUT[li*3+1],renderLUT[li*3+2]],dither.gm.mode,dither.gm.blend);
+    }
+
     if(Math.abs(persp)<0.005){
       // ── FLAT dither ────────────────────────────────
       for(let x=0;x<artW;x+=bw){
         for(let y=0;y<artH;y+=bh){
           const s=sampleRegion(x,y,x+bw,y+bh);if(!s)continue;
           const[ar,ag,ab]=colorize(s[0],s[1],s[2]);
+          const[fr,fg,fb]=finalBarColor(ar,ag,ab);
+          const ckey=`${fr|0},${fg|0},${fb|0}`;
+          renderedColorSet.add(ckey);
+          if(colorExclusions.has(ckey))continue;
           drawBar(x,y,bw,bh,ar,ag,ab,s[3],1);
         }
       }
@@ -755,6 +774,10 @@ function doRender(){
           let[hh,s,l]=rgb2hsl(sd[ci],sd[ci+1],sd[ci+2]);
           s=Math.min(1,s*sat); l=Math.min(1,Math.max(0,l*bright));
           const[ar,ag,ab]=hsl2rgb(hh,s,l);
+          const[fr,fg,fb]=finalBarColor(ar,ag,ab);
+          const ckey=`${fr|0},${fg|0},${fb|0}`;
+          renderedColorSet.add(ckey);
+          if(colorExclusions.has(ckey))continue;
 
           // Shrink corners inward for gap between bars
           const gf  = Math.min(0.45, gap / Math.max(1, bw * ps));
@@ -815,9 +838,47 @@ function doRender(){
 
   setSzLbl(`${artW} × ${artH} px`);
   updateThumbs();
+  updateColorFilter();
 }
 
 function updateThumbs(){}
+
+function updateColorFilter(){
+  const el=document.getElementById('cf-swatches');
+  const empty=document.getElementById('cf-empty');
+  if(!el)return;
+  const colors=[...renderedColorSet];
+  if(!colors.length){if(empty)empty.style.display='block';el.innerHTML='';return;}
+  if(empty)empty.style.display='none';
+
+  // Sort by luminance so swatches appear in a natural order
+  colors.sort((a,b)=>{
+    const lum=k=>{const[r,g,bl]=k.split(',').map(Number);return 0.299*r+0.587*g+0.114*bl;};
+    return lum(a)-lum(b);
+  });
+
+  el.innerHTML='';
+  colors.forEach(ckey=>{
+    const[r,g,b]=ckey.split(',').map(Number);
+    const hex='#'+[r,g,b].map(v=>Math.max(0,Math.min(255,v|0)).toString(16).padStart(2,'0')).join('');
+    const excluded=colorExclusions.has(ckey);
+    const sw=document.createElement('div');
+    sw.title=hex;
+    sw.style.cssText=`width:28px;height:28px;border-radius:6px;background:${hex};cursor:pointer;flex-shrink:0;position:relative;border:2px solid ${excluded?'rgba(255,80,80,0.9)':'rgba(255,255,255,0.15)'};transition:border-color .15s;`;
+    if(excluded){
+      const x=document.createElement('div');
+      x.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:rgba(255,80,80,0.9);pointer-events:none;';
+      x.textContent='×';
+      sw.appendChild(x);
+    }
+    sw.addEventListener('click',()=>{
+      if(colorExclusions.has(ckey))colorExclusions.delete(ckey);
+      else colorExclusions.add(ckey);
+      schedRender();
+    });
+    el.appendChild(sw);
+  });
+}
 
 // ── LAYERS PANEL ───────────────────────────────────
 function selectDither(){
@@ -947,6 +1008,11 @@ function renderDitherProps(rp){
       <div id="grad-bar"></div>
       <div id="stops-list"></div>
       <button class="add-stop-btn" id="add-stop-btn">+ add stop</button>
+    </div>
+    <div class="sec" id="color-filter-sec">
+      <div class="sec-head"><h3>Color Filter</h3><span style="font-size:11px;color:rgba(255,255,255,.3)">click bar to hide</span></div>
+      <div id="cf-swatches" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      <div id="cf-empty" style="font-size:12px;color:rgba(255,255,255,.25);display:none">Render an image to see colors</div>
     </div>`;
 
   // Bind sliders with linked number inputs
@@ -977,6 +1043,7 @@ function renderDitherProps(rp){
     renderGradEditor();schedRender();
   });
   renderGradEditor();
+  updateColorFilter();
 }
 
 function updateSliderFill(el){
