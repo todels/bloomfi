@@ -392,8 +392,7 @@ const dither = {
   }
 };
 
-const colorExclusions = new Set(); // "r,g,b" keys
-let renderedColorSet = new Set();  // populated each render
+const lumExclude = { active: false, lo: 0, hi: 50 }; // luminance 0-255
 
 const BLEND_MODES = [
   ['source-over','normal'],['multiply','multiply'],['screen','screen'],
@@ -466,7 +465,6 @@ function loadFile(file){
       img.onload=()=>{
         const name=file.name.replace(/\.[^.]+$/,'').slice(0,22)||'Image';
         sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name};
-        colorExclusions.clear();renderedColorSet=new Set();
         updateSourceLabel(name);
         selItem='dither';
         refreshAll();URL.revokeObjectURL(url);
@@ -480,7 +478,6 @@ function loadFile(file){
     img.onload=()=>{
       const name=file.name.replace(/\.[^.]+$/,'').slice(0,22)||'Image';
       sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name};
-      colorExclusions.clear();renderedColorSet=new Set();
       updateSourceLabel(name);
       selItem='dither';
       refreshAll();URL.revokeObjectURL(url);
@@ -678,7 +675,6 @@ function doRender(){
     }
 
     const renderLUT=dither.gm.on?buildLUT(dither.gm.stops):null;
-    renderedColorSet=new Set();
 
     function finalBarColor(ar,ag,ab){
       if(!renderLUT)return[ar,ag,ab];
@@ -687,16 +683,20 @@ function doRender(){
       return blendPx([ar,ag,ab],[renderLUT[li*3],renderLUT[li*3+1],renderLUT[li*3+2]],dither.gm.mode,dither.gm.blend);
     }
 
+    function isLumExcluded(ar,ag,ab){
+      if(!lumExclude.active)return false;
+      const[fr,fg,fb]=finalBarColor(ar,ag,ab);
+      const lum=0.299*fr+0.587*fg+0.114*fb;
+      return lum>=lumExclude.lo&&lum<=lumExclude.hi;
+    }
+
     if(Math.abs(persp)<0.005){
       // ── FLAT dither ────────────────────────────────
       for(let x=0;x<artW;x+=bw){
         for(let y=0;y<artH;y+=bh){
           const s=sampleRegion(x,y,x+bw,y+bh);if(!s)continue;
           const[ar,ag,ab]=colorize(s[0],s[1],s[2]);
-          const[fr,fg,fb]=finalBarColor(ar,ag,ab);
-          const ckey=`${fr|0},${fg|0},${fb|0}`;
-          renderedColorSet.add(ckey);
-          if(colorExclusions.has(ckey))continue;
+          if(isLumExcluded(ar,ag,ab))continue;
           drawBar(x,y,bw,bh,ar,ag,ab,s[3],1);
         }
       }
@@ -774,10 +774,7 @@ function doRender(){
           let[hh,s,l]=rgb2hsl(sd[ci],sd[ci+1],sd[ci+2]);
           s=Math.min(1,s*sat); l=Math.min(1,Math.max(0,l*bright));
           const[ar,ag,ab]=hsl2rgb(hh,s,l);
-          const[fr,fg,fb]=finalBarColor(ar,ag,ab);
-          const ckey=`${fr|0},${fg|0},${fb|0}`;
-          renderedColorSet.add(ckey);
-          if(colorExclusions.has(ckey))continue;
+          if(isLumExcluded(ar,ag,ab))continue;
 
           // Shrink corners inward for gap between bars
           const gf  = Math.min(0.45, gap / Math.max(1, bw * ps));
@@ -838,46 +835,53 @@ function doRender(){
 
   setSzLbl(`${artW} × ${artH} px`);
   updateThumbs();
-  updateColorFilter();
 }
 
 function updateThumbs(){}
 
-function updateColorFilter(){
-  const el=document.getElementById('cf-swatches');
-  const empty=document.getElementById('cf-empty');
-  if(!el)return;
-  const colors=[...renderedColorSet];
-  if(!colors.length){if(empty)empty.style.display='block';el.innerHTML='';return;}
-  if(empty)empty.style.display='none';
+function initLumTrack(){
+  const track=document.getElementById('lx-track');
+  const fill=document.getElementById('lx-fill');
+  const loH=document.getElementById('lx-lo');
+  const hiH=document.getElementById('lx-hi');
+  const loLbl=document.getElementById('lx-lo-lbl');
+  const hiLbl=document.getElementById('lx-hi-lbl');
+  if(!track)return;
 
-  // Sort by luminance so swatches appear in a natural order
-  colors.sort((a,b)=>{
-    const lum=k=>{const[r,g,bl]=k.split(',').map(Number);return 0.299*r+0.587*g+0.114*bl;};
-    return lum(a)-lum(b);
-  });
+  function updateUI(){
+    const loPct=lumExclude.lo/255*100;
+    const hiPct=lumExclude.hi/255*100;
+    loH.style.left=loPct+'%';
+    hiH.style.left=hiPct+'%';
+    fill.style.left=loPct+'%';
+    fill.style.width=(hiPct-loPct)+'%';
+    loLbl.textContent=Math.round(loPct)+'%';
+    hiLbl.textContent=Math.round(hiPct)+'%';
+  }
 
-  el.innerHTML='';
-  colors.forEach(ckey=>{
-    const[r,g,b]=ckey.split(',').map(Number);
-    const hex='#'+[r,g,b].map(v=>Math.max(0,Math.min(255,v|0)).toString(16).padStart(2,'0')).join('');
-    const excluded=colorExclusions.has(ckey);
-    const sw=document.createElement('div');
-    sw.title=hex;
-    sw.style.cssText=`width:28px;height:28px;border-radius:6px;background:${hex};cursor:pointer;flex-shrink:0;position:relative;border:2px solid ${excluded?'rgba(255,80,80,0.9)':'rgba(255,255,255,0.15)'};transition:border-color .15s;`;
-    if(excluded){
-      const x=document.createElement('div');
-      x.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:rgba(255,80,80,0.9);pointer-events:none;';
-      x.textContent='×';
-      sw.appendChild(x);
-    }
-    sw.addEventListener('click',()=>{
-      if(colorExclusions.has(ckey))colorExclusions.delete(ckey);
-      else colorExclusions.add(ckey);
-      schedRender();
+  function pctFromEvent(e){
+    const r=track.getBoundingClientRect();
+    return Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+  }
+
+  function drag(handle, onMove){
+    handle.addEventListener('mousedown',e=>{
+      e.preventDefault();
+      const move=ev=>{onMove(pctFromEvent(ev));updateUI();schedRender();};
+      const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);};
+      document.addEventListener('mousemove',move);
+      document.addEventListener('mouseup',up);
     });
-    el.appendChild(sw);
+  }
+
+  drag(loH, pct=>{
+    lumExclude.lo=Math.min(pct*255, lumExclude.hi-1);
   });
+  drag(hiH, pct=>{
+    lumExclude.hi=Math.max(pct*255, lumExclude.lo+1);
+  });
+
+  updateUI();
 }
 
 // ── LAYERS PANEL ───────────────────────────────────
@@ -1009,10 +1013,21 @@ function renderDitherProps(rp){
       <div id="stops-list"></div>
       <button class="add-stop-btn" id="add-stop-btn">+ add stop</button>
     </div>
-    <div class="sec" id="color-filter-sec">
-      <div class="sec-head"><h3>Color Filter</h3><span style="font-size:11px;color:rgba(255,255,255,.3)">click bar to hide</span></div>
-      <div id="cf-swatches" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-      <div id="cf-empty" style="font-size:12px;color:rgba(255,255,255,.25);display:none">Render an image to see colors</div>
+    <div class="sec">
+      <div class="sec-head"><h3>Color Filter</h3></div>
+      <div class="tog-row"><label class="tl">Enable</label><label class="sw"><input type="checkbox" id="lx-on" ${lumExclude.active?'checked':''}><span class="sw-t"></span></label></div>
+      <div style="padding:0 8px 4px">
+        <div style="font-size:11px;color:rgba(255,255,255,.3);margin-bottom:8px">Exclude bars by brightness — drag handles to set range</div>
+        <div id="lx-track" style="position:relative;height:28px;border-radius:8px;background:linear-gradient(to right,#000,#fff);border:1px solid rgba(255,255,255,0.15);cursor:crosshair;user-select:none">
+          <div id="lx-fill" style="position:absolute;top:0;bottom:0;background:rgba(255,80,80,0.35);pointer-events:none"></div>
+          <div id="lx-lo" style="position:absolute;top:-3px;bottom:-3px;width:6px;border-radius:3px;background:#fff;border:1px solid rgba(0,0,0,0.3);box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:ew-resize;transform:translateX(-3px)"></div>
+          <div id="lx-hi" style="position:absolute;top:-3px;bottom:-3px;width:6px;border-radius:3px;background:#fff;border:1px solid rgba(0,0,0,0.3);box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:ew-resize;transform:translateX(-3px)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:rgba(255,255,255,.4)">
+          <span id="lx-lo-lbl">${Math.round(lumExclude.lo/255*100)}%</span>
+          <span id="lx-hi-lbl">${Math.round(lumExclude.hi/255*100)}%</span>
+        </div>
+      </div>
     </div>`;
 
   // Bind sliders with linked number inputs
@@ -1043,7 +1058,8 @@ function renderDitherProps(rp){
     renderGradEditor();schedRender();
   });
   renderGradEditor();
-  updateColorFilter();
+  chk('lx-on',v=>{lumExclude.active=v;});
+  initLumTrack();
 }
 
 function updateSliderFill(el){
