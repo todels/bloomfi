@@ -464,9 +464,9 @@ function loadFile(file){
       const img=new Image();
       img.onload=()=>{
         const name=file.name.replace(/\.[^.]+$/,'').slice(0,22)||'Image';
-        sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name};
+        sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name,x:0,y:0};
         updateSourceLabel(name);
-        selItem='dither';
+        selItem='source';
         refreshAll();URL.revokeObjectURL(url);
       };
       img.src=url;
@@ -477,7 +477,7 @@ function loadFile(file){
     const img=new Image();
     img.onload=()=>{
       const name=file.name.replace(/\.[^.]+$/,'').slice(0,22)||'Image';
-      sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name};
+      sourceImg={img,w:img.naturalWidth,h:img.naturalHeight,perspective:0,name,x:0,y:0};
       updateSourceLabel(name);
       selItem='dither';
       refreshAll();URL.revokeObjectURL(url);
@@ -624,8 +624,9 @@ function doRender(){
   const comp=document.createElement('canvas');comp.width=artW;comp.height=artH;
   const cx=comp.getContext('2d');
   const sp=sourceImg.perspective||0;
-  if(Math.abs(sp)>=0.005){drawWithPersp(cx,sourceImg.img,{x:0,y:0,w:artW,h:artH,perspective:sp});}
-  else{cx.drawImage(sourceImg.img,0,0,artW,artH);}
+  const sx=sourceImg.x||0,sy2=sourceImg.y||0;
+  if(Math.abs(sp)>=0.005){drawWithPersp(cx,sourceImg.img,{x:sx,y:sy2,w:artW,h:artH,perspective:sp});}
+  else{cx.drawImage(sourceImg.img,sx,sy2,artW,artH);}
 
   // Snapshot image alpha as mask — effects will be clipped to this
   const [mask,_t,_tx]=workCanvases(artW,artH);
@@ -892,6 +893,14 @@ function selectDither(){
   renderProps();
 }
 
+function selectSource(){
+  selItem='source';
+  document.getElementById('dither-item').classList.remove('sel');
+  document.querySelectorAll('.litem').forEach(el=>el.classList.remove('sel'));
+  document.getElementById('img-item')?.classList.add('sel');
+  renderProps();
+}
+
 function selectEffect(id){
   selItem=id;
   document.getElementById('dither-item').classList.remove('sel');
@@ -903,6 +912,18 @@ function renderEffectsList(){
   document.querySelectorAll('.litem').forEach(el=>el.remove());
   const list=document.getElementById('layer-list');
   document.getElementById('dither-item').classList.toggle('sel',selItem==='dither');
+
+  // Image layer item — only when an image is loaded
+  const existingImg=document.getElementById('img-item');
+  if(existingImg)existingImg.remove();
+  if(sourceImg){
+    const imgEl=document.createElement('div');
+    imgEl.id='img-item';
+    imgEl.className='litem'+(selItem==='source'?' sel':'');
+    imgEl.innerHTML=`<div class="litem-main"><div class="layer-left"><div class="layer-icon-btn"><svg viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="16" height="16" rx="2" stroke="white" stroke-width="1.5"/><circle cx="7" cy="7" r="1.5" fill="white" opacity=".6"/><path d="M2 13l4-4 3 3 3-3 6 5" stroke="white" stroke-width="1.2" opacity=".7" stroke-linejoin="round"/></svg></div><span class="lname">${sourceImg.name}</span></div></div>`;
+    imgEl.querySelector('.litem-main').addEventListener('click',selectSource);
+    list.insertBefore(imgEl,list.firstChild);
+  }
   const eyeSVG='<svg viewBox="0 0 20 20" fill="none"><ellipse cx="10" cy="10" rx="8" ry="5" stroke="white" stroke-width="1.5"/><circle cx="10" cy="10" r="2.5" fill="white"/></svg>';
   const FX={mousetrail:'<svg viewBox="0 0 20 20" fill="none"><path d="M5 3l12 7-7 1-3 6L5 3z" stroke="white" stroke-width="1.5" stroke-linejoin="round"/></svg>',meshgrad:'<svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="white" stroke-width="1.5"/><path d="M3 10h14M10 3v14" stroke="white" stroke-width="1" opacity=".5"/></svg>',bloom:'<svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3" fill="white"/><circle cx="10" cy="10" r="6" stroke="white" stroke-width="1" opacity=".4"/></svg>'};
   effects.forEach(L=>{
@@ -922,6 +943,7 @@ function renderEffectsList(){
 function renderProps(){
   const rp=document.getElementById('rp');
   if(selItem==='dither'){renderDitherProps(rp);return}
+  if(selItem==='source'&&sourceImg){renderLayerProps(rp,sourceImg);return}
   const L=effects.find(x=>x.id===selItem);
   if(!L){rp.innerHTML='<div id="no-sel">Select <strong style="color:rgba(255,255,255,.7)">Dither</strong> or an effect<br>to edit settings.</div>';return}
   renderEffectProps(rp,L);
