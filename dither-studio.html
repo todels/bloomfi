@@ -649,26 +649,6 @@ function doRender(){
     const{bw,bh,gap,rx,sat,bright,persp}=dither;
     const cxMid=artW/2;
 
-    function drawBar(x0,y0,w,h,ar,ag,ab,a,ps){
-      const pg=gap*ps, prx=rx*ps;
-      const px=x0+pg/2, py=y0+pg/2;
-      const pw=Math.max(0.3,w-pg), ph=Math.max(0.3,h-pg);
-      const rr=Math.min(prx,pw/2,ph/2);
-      mctx.fillStyle=`rgba(${ar},${ag},${ab},${a/255})`;
-      if(rr>0.3){mctx.beginPath();mctx.roundRect(px,py,pw,ph,rr);mctx.fill();}
-      else mctx.fillRect(px,py,pw,ph);
-    }
-
-    function sampleRegion(rx0,ry0,rx1,ry1){
-      rx0=Math.max(0,rx0|0);ry0=Math.max(0,ry0|0);
-      rx1=Math.min(artW,Math.ceil(rx1));ry1=Math.min(artH,Math.ceil(ry1));
-      if(rx1<=rx0||ry1<=ry0)return null;
-      let r=0,g=0,b=0,a=0,n=0;
-      for(let sx=rx0;sx<rx1;sx++)for(let sy=ry0;sy<ry1;sy++){const i=(sy*artW+sx)*4;r+=sd[i];g+=sd[i+1];b+=sd[i+2];a+=sd[i+3];n++}
-      if(!n||a/n<8)return null;
-      return[r/n,g/n,b/n,a/n];
-    }
-
     function colorize(r,g,b){
       let[hh,s,l]=rgb2hsl(r,g,b);
       s=Math.min(1,s*sat);l=Math.min(1,Math.max(0,l*bright));
@@ -692,14 +672,39 @@ function doRender(){
     }
 
     if(Math.abs(persp)<0.005){
-      // ── FLAT dither ────────────────────────────────
-      for(let x=0;x<artW;x+=bw){
-        for(let y=0;y<artH;y+=bh){
-          const s=sampleRegion(x,y,x+bw,y+bh);if(!s)continue;
-          const[ar,ag,ab]=colorize(s[0],s[1],s[2]);
+      // ── FLAT dither — GPU downscale + batched draws ──────────────────────
+      const gridCols=Math.ceil(artW/bw),gridRows=Math.ceil(artH/bh);
+      const gc=document.createElement('canvas');gc.width=gridCols;gc.height=gridRows;
+      const gx=gc.getContext('2d',{willReadFrequently:true});
+      gx.drawImage(comp,0,0,gridCols,gridRows);
+      const gd=gx.getImageData(0,0,gridCols,gridRows).data;
+
+      const pg=gap/2,pw=Math.max(0.3,bw-gap),ph=Math.max(0.3,bh-gap);
+      const prx=Math.min(rx,pw/2,ph/2);
+      const batches=new Map();
+
+      for(let col=0;col<gridCols;col++){
+        for(let row=0;row<gridRows;row++){
+          const gi=(row*gridCols+col)*4;
+          const aa=gd[gi+3];if(aa<8)continue;
+          const[ar,ag,ab]=colorize(gd[gi],gd[gi+1],gd[gi+2]);
           if(isLumExcluded(ar,ag,ab))continue;
-          drawBar(x,y,bw,bh,ar,ag,ab,s[3],1);
+          const key=`${ar},${ag},${ab},${aa|0}`;
+          if(!batches.has(key))batches.set(key,{r:ar,g:ag,b:ab,a:aa,xs:[],ys:[]});
+          const bt=batches.get(key);
+          bt.xs.push(col*bw+pg);bt.ys.push(row*bh+pg);
         }
+      }
+
+      for(const[,bt]of batches){
+        mctx.fillStyle=`rgba(${bt.r},${bt.g},${bt.b},${bt.a/255})`;
+        mctx.beginPath();
+        const n=bt.xs.length;
+        for(let i=0;i<n;i++){
+          if(prx>0.3)mctx.roundRect(bt.xs[i],bt.ys[i],pw,ph,prx);
+          else mctx.rect(bt.xs[i],bt.ys[i],pw,ph);
+        }
+        mctx.fill();
       }
     } else {
       // ── TRUE PERSPECTIVE dither ──────────────────────────────────────────
@@ -728,7 +733,8 @@ function doRender(){
       const nearDist = artH * ratio / (ratio - 1); // always > artH
       const horizY = fwd ? artH - nearDist : nearDist; // off-screen
 
-      let sy = fwd ? artH : 0; // start at near plane
+      let sy = fwd ? artH : 0;
+      const perspBatches = new Map();
 
       for(let iter = 0; iter < 3000; iter++){
         const distH = Math.abs(sy - horizY);
@@ -777,40 +783,38 @@ function doRender(){
           const[ar,ag,ab]=hsl2rgb(hh,s,l);
           if(isLumExcluded(ar,ag,ab))continue;
 
-          // Shrink corners inward for gap between bars
-          const gf  = Math.min(0.45, gap / Math.max(1, bw * ps));
-          const tcx = (xAL+xAR+xBR+xBL)/4, tcy = (yA+yA+yB+yB)/4;
-          const sh  = (x,y) => [x+(tcx-x)*gf, y+(tcy-y)*gf];
-          const[qAL,qaL]=sh(xAL,yA), [qAR,qaR]=sh(xAR,yA);
-          const[qBR,qbR]=sh(xBR,yB), [qBL,qbL]=sh(xBL,yB);
+          const gf=Math.min(0.45,gap/Math.max(1,bw*ps));
+          const tcx=(xAL+xAR+xBR+xBL)/4,tcy=(yA+yA+yB+yB)/4;
+          const sh=(x,y)=>[x+(tcx-x)*gf,y+(tcy-y)*gf];
+          const[qAL,qaL]=sh(xAL,yA),[qAR,qaR]=sh(xAR,yA);
+          const[qBR,qbR]=sh(xBR,yB),[qBL,qbL]=sh(xBL,yB);
 
-          mctx.fillStyle = `rgba(${ar},${ag},${ab},${sd[ci+3]/255})`;
-          mctx.beginPath();
-          // Rounded quadrilateral: quadratic bezier at each corner
-          if(rx > 0.3){
-            const pts=[[qAL,qaL],[qAR,qaR],[qBR,qbR],[qBL,qbL]];
-            for(let pi=0;pi<4;pi++){
-              const [cx0,cy0]=pts[pi];
-              const [px0,py0]=pts[(pi+3)%4];
-              const [nx0,ny0]=pts[(pi+1)%4];
-              const d0x=px0-cx0, d0y=py0-cy0, l0=Math.sqrt(d0x*d0x+d0y*d0y)||1;
-              const d1x=nx0-cx0, d1y=ny0-cy0, l1=Math.sqrt(d1x*d1x+d1y*d1y)||1;
-              const rr=Math.min(rx*ps, l0/2, l1/2);
-              const ax=cx0+d0x/l0*rr, ay=cy0+d0y/l0*rr;
-              const bx=cx0+d1x/l1*rr, by=cy0+d1y/l1*rr;
-              if(pi===0) mctx.moveTo(ax,ay); else mctx.lineTo(ax,ay);
-              mctx.quadraticCurveTo(cx0,cy0,bx,by);
-            }
-          } else {
-            mctx.moveTo(qAL, qaL);
-            mctx.lineTo(qAR, qaR);
-            mctx.lineTo(qBR, qbR);
-            mctx.lineTo(qBL, qbL);
-          }
-          mctx.closePath();
-          mctx.fill();
+          const key=`${ar},${ag},${ab},${sd[ci+3]|0}`;
+          if(!perspBatches.has(key))perspBatches.set(key,{r:ar,g:ag,b:ab,a:sd[ci+3],quads:[]});
+          perspBatches.get(key).quads.push([qAL,qaL,qAR,qaR,qBR,qbR,qBL,qbL,rx*ps]);
         }
         sy = nextSy;
+      }
+
+      for(const[,bt]of perspBatches){
+        mctx.fillStyle=`rgba(${bt.r},${bt.g},${bt.b},${bt.a/255})`;
+        mctx.beginPath();
+        for(const[al,aly,ar2,ary,br,bry,bl,bly,rr]of bt.quads){
+          if(rr>0.3){
+            const pts=[[al,aly],[ar2,ary],[br,bry],[bl,bly]];
+            for(let pi=0;pi<4;pi++){
+              const[cx0,cy0]=pts[pi],[px0,py0]=pts[(pi+3)%4],[nx0,ny0]=pts[(pi+1)%4];
+              const d0x=px0-cx0,d0y=py0-cy0,l0=Math.sqrt(d0x*d0x+d0y*d0y)||1;
+              const d1x=nx0-cx0,d1y=ny0-cy0,l1=Math.sqrt(d1x*d1x+d1y*d1y)||1;
+              const rrr=Math.min(rr,l0/2,l1/2);
+              const ax=cx0+d0x/l0*rrr,ay=cy0+d0y/l0*rrr,bx=cx0+d1x/l1*rrr,by=cy0+d1y/l1*rrr;
+              if(pi===0)mctx.moveTo(ax,ay);else mctx.lineTo(ax,ay);
+              mctx.quadraticCurveTo(cx0,cy0,bx,by);
+            }
+          }else{mctx.moveTo(al,aly);mctx.lineTo(ar2,ary);mctx.lineTo(br,bry);mctx.lineTo(bl,bly);}
+          mctx.closePath();
+        }
+        mctx.fill();
       }
     }
     // 3. Apply gradient map to dithered canvas
@@ -1195,21 +1199,23 @@ function exportSVG(){
   }
 
   if(Math.abs(persp)<0.005){
-    // ── Flat dither → <rect> ───────────────────────────
-    for(let x=0;x<artW;x+=bw){
-      for(let y=0;y<artH;y+=bh){
-        const x0=Math.max(0,x|0),y0=Math.max(0,y|0);
-        const x1=Math.min(artW,Math.ceil(x+bw)),y1=Math.min(artH,Math.ceil(y+bh));
-        if(x1<=x0||y1<=y0)continue;
-        let r=0,g=0,b=0,a=0,n=0;
-        for(let sx=x0;sx<x1;sx++)for(let sy=y0;sy<y1;sy++){const i=(sy*artW+sx)*4;r+=sd[i];g+=sd[i+1];b+=sd[i+2];a+=sd[i+3];n++}
-        if(!n||a/n<8)continue;
-        const[hex,op]=finalColor(r/n,g/n,b/n,a/n);
-        const px=f2(x+gap/2),py=f2(y+gap/2);
-        const pw=f2(Math.max(0,bw-gap)),ph=f2(Math.max(0,bh-gap));
-        if(pw<=0||ph<=0)continue;
-        const rr=f2(Math.min(rx,pw/2,ph/2));
-        shapes.push(`<rect x="${px}" y="${py}" width="${pw}" height="${ph}"${rr>0?` rx="${rr}"`:''} fill="${hex}" fill-opacity="${op}"/>`);
+    // ── Flat dither → <rect> — GPU downscale ──────────
+    const gridCols=Math.ceil(artW/bw),gridRows=Math.ceil(artH/bh);
+    const gc=document.createElement('canvas');gc.width=gridCols;gc.height=gridRows;
+    const gx2=gc.getContext('2d',{willReadFrequently:true});
+    gx2.drawImage(comp,0,0,gridCols,gridRows);
+    const gd=gx2.getImageData(0,0,gridCols,gridRows).data;
+    const svgPw=f2(Math.max(0,bw-gap)),svgPh=f2(Math.max(0,bh-gap));
+    const svgRr=f2(Math.min(rx,svgPw/2,svgPh/2));
+    if(svgPw>0&&svgPh>0){
+      for(let col=0;col<gridCols;col++){
+        for(let row=0;row<gridRows;row++){
+          const gi=(row*gridCols+col)*4;
+          const aa=gd[gi+3];if(aa<8)continue;
+          const[hex,op]=finalColor(gd[gi],gd[gi+1],gd[gi+2],aa);
+          const px=f2(col*bw+gap/2),py=f2(row*bh+gap/2);
+          shapes.push(`<rect x="${px}" y="${py}" width="${svgPw}" height="${svgPh}"${svgRr>0?` rx="${svgRr}"`:''} fill="${hex}" fill-opacity="${op}"/>`);
+        }
       }
     }
   } else {
@@ -1292,15 +1298,18 @@ function exportWeb(){
   }
 
   if(!isPerspective){
-    for(let x=0;x<artW;x+=bw)for(let y=0;y<artH;y+=bh){
-      let r=0,g=0,b=0,a=0,n=0;
-      const x0=Math.max(0,x|0),y0=Math.max(0,y|0),x1=Math.min(artW,Math.ceil(x+bw)),y1=Math.min(artH,Math.ceil(y+bh));
-      if(x1<=x0||y1<=y0)continue;
-      for(let sx=x0;sx<x1;sx++)for(let sy=y0;sy<y1;sy++){const i=(sy*artW+sx)*4;r+=sd[i];g+=sd[i+1];b+=sd[i+2];a+=sd[i+3];n++;}
-      if(!n||a/n<8)continue;
-      const[ar,ag,ab,aa]=bakeColor(r/n,g/n,b/n,a/n);
-      const px=f1(x+gap/2),py=f1(y+gap/2),pw=f1(Math.max(0,bw-gap)),ph=f1(Math.max(0,bh-gap)),rr=f1(Math.min(rx,pw/2,ph/2));
-      flatBars.push([px,py,pw,ph,rr,ar,ag,ab,aa]);
+    // GPU downscale — one pixel read per bar instead of bw×bh
+    const gridCols=Math.ceil(artW/bw),gridRows=Math.ceil(artH/bh);
+    const gc=document.createElement('canvas');gc.width=gridCols;gc.height=gridRows;
+    const gx3=gc.getContext('2d',{willReadFrequently:true});
+    gx3.drawImage(comp,0,0,gridCols,gridRows);
+    const gd=gx3.getImageData(0,0,gridCols,gridRows).data;
+    const wpw=f1(Math.max(0,bw-gap)),wph=f1(Math.max(0,bh-gap)),wrr=f1(Math.min(rx,wpw/2,wph/2));
+    for(let col=0;col<gridCols;col++)for(let row=0;row<gridRows;row++){
+      const gi=(row*gridCols+col)*4;
+      const aa=gd[gi+3];if(aa<8)continue;
+      const[ar,ag,ab,baa]=bakeColor(gd[gi],gd[gi+1],gd[gi+2],aa);
+      flatBars.push([f1(col*bw+gap/2),f1(row*bh+gap/2),wpw,wph,wrr,ar,ag,ab,baa]);
     }
   } else {
     const strength=Math.abs(persp),fwd=persp>0,ratio=1+strength*8;
