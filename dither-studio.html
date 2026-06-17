@@ -397,7 +397,7 @@ select:focus,select.psel:focus{border-color:rgba(255,255,255,0.3)}
 </div>
 
 </div>
-<input type="file" id="file-in" accept="image/*,.svg" multiple>
+<input type="file" id="file-in" accept="image/*,.svg,video/*" multiple>
 
 
 <script>
@@ -564,10 +564,25 @@ document.getElementById('file-in').addEventListener('change',e=>[...e.target.fil
 [ca,dzLeft].forEach(el=>{
   el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
   el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
-  el.addEventListener('drop',e=>{e.preventDefault();el.classList.remove('drag-over');[...e.dataTransfer.files].forEach(f=>{if(f.type.startsWith('image/')||f.name.toLowerCase().endsWith('.svg'))loadFile(f)});});
+  el.addEventListener('drop',e=>{e.preventDefault();el.classList.remove('drag-over');[...e.dataTransfer.files].forEach(f=>{if(f.type.startsWith('image/')||f.type.startsWith('video/')||f.name.toLowerCase().endsWith('.svg'))loadFile(f)});});
 });
 
 function loadFile(file){
+  if(file.type.startsWith('video/')){
+    const url=URL.createObjectURL(file);
+    const video=document.createElement('video');
+    video.src=url; video.loop=true; video.muted=true; video.playsInline=true;
+    video.addEventListener('loadedmetadata',()=>{
+      const name=file.name.replace(/\.[^.]+$/,'').slice(0,22)||'Video';
+      sourceImg={video,img:video,w:video.videoWidth,h:video.videoHeight,perspective:0,name,x:0,y:0,isVideo:true};
+      video.play();
+      updateSourceLabel(name);
+      selItem='source';
+      startAnim();
+      refreshAll();
+    });
+    return;
+  }
   const isSVG=file.type==='image/svg+xml'||file.name.toLowerCase().endsWith('.svg');
   if(isSVG){
     const reader=new FileReader();
@@ -753,8 +768,9 @@ function doRender(){
   const cx=comp.getContext('2d');
   const sp=sourceImg.perspective||0;
   const sx=sourceImg.x||0,sy2=sourceImg.y||0;
-  if(Math.abs(sp)>=0.005){drawWithPersp(cx,sourceImg.img,{x:sx,y:sy2,w:artW,h:artH,perspective:sp});}
-  else{cx.drawImage(sourceImg.img,sx,sy2,artW,artH);}
+  const srcEl=sourceImg.isVideo?sourceImg.video:sourceImg.img;
+  if(Math.abs(sp)>=0.005){drawWithPersp(cx,srcEl,{x:sx,y:sy2,w:artW,h:artH,perspective:sp});}
+  else{cx.drawImage(srcEl,sx,sy2,artW,artH);}
 
   // Snapshot image alpha as mask — effects will be clipped to this
   const [mask,_t,_tx]=workCanvases(artW,artH);
