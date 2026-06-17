@@ -1151,6 +1151,7 @@ function renderDitherProps(rp){
       <div class="prop-row"><div class="prop-top"><span class="prop-label">Gap</span><div class="prop-value"><input type="number" id="vgap-n" value="${d.gap}" min="0" max="40"><span class="prop-unit">px</span></div></div><input type="range" id="d-gap" min="0" max="40" value="${d.gap}" step="0.5"></div>
       <div class="prop-row"><div class="prop-top"><span class="prop-label">Radius</span><div class="prop-value"><input type="number" id="vrx-n" value="${d.rx}" min="0" max="60"><span class="prop-unit">px</span></div></div><input type="range" id="d-rx" min="0" max="60" value="${d.rx}" step="0.5"></div>
       <div class="prop-row"><div class="prop-top"><span class="prop-label">Perspective</span><div class="prop-value"><input type="number" id="vpersp-n" value="${Math.round(d.persp*100)}" min="-1000" max="1000"><span class="prop-unit">%</span></div></div><input type="range" id="d-persp" min="-10" max="10" value="${d.persp}" step="0.01"></div>
+      ${sourceImg?`<div class="prop-row"><div class="prop-top"><span class="prop-label">Image Tilt</span><div class="prop-value"><input type="number" id="vimgtilt-n" value="${Math.round((sourceImg.perspective||0)*100)}" min="-100" max="100"><span class="prop-unit">%</span></div></div><input type="range" id="d-imgtilt" min="-1" max="1" value="${sourceImg.perspective||0}" step="0.01"></div>`:''}
     </div>
     <div class="sec">
       <div class="sec-head"><h3>Color</h3></div>
@@ -1198,6 +1199,7 @@ function renderDitherProps(rp){
   linkSlider('d-gap','vgap-n',v=>{dither.gap=v});
   linkSlider('d-rx','vrx-n',v=>{dither.rx=v});
   linkSlider('d-persp','vpersp-n',v=>{dither.persp=v},100);
+  if(sourceImg) linkSlider('d-imgtilt','vimgtilt-n',v=>{sourceImg.perspective=v},100);
   linkSlider('d-sat','vsat-n',v=>{dither.sat=v});
   linkSlider('d-bri','vbri-n',v=>{dither.bright=v});
   chk('gm-on',v=>{dither.gm.on=v});
