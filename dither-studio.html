@@ -37,6 +37,35 @@ html,body{height:100%;overflow:hidden;background:#000;color:#fff;font-size:14px;
 /* Left bottom panels */
 #left-bottom{display:flex;flex-direction:column;gap:17px}
 
+/* Versions card */
+#versions-card{
+  background:#0f0f0f;border:1px solid rgba(255,255,255,0.09);border-radius:16px;
+  padding:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.25);
+}
+#versions-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 6px}
+#versions-head span{font-size:11px;letter-spacing:.1em;color:rgba(255,255,255,.3);text-transform:uppercase}
+#save-ver-btn{
+  background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);
+  border-radius:6px;color:rgba(255,255,255,.7);font-size:12px;font-weight:500;
+  padding:4px 10px;cursor:pointer;font-family:'Geist',sans-serif;transition:.15s;
+}
+#save-ver-btn:hover{background:rgba(255,255,255,0.12);color:#fff}
+#versions-list{display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:auto}
+#versions-list::-webkit-scrollbar{width:3px}
+#versions-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1)}
+.ver-item{
+  display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
+  cursor:pointer;transition:.12s;border:1px solid transparent;
+}
+.ver-item:hover{background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.07)}
+.ver-thumb{width:44px;height:30px;border-radius:5px;object-fit:cover;flex-shrink:0;border:1px solid rgba(255,255,255,.1)}
+.ver-info{flex:1;min-width:0}
+.ver-label{font-size:13px;font-weight:500;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ver-time{font-size:11px;color:rgba(255,255,255,.3);margin-top:1px}
+.ver-del{background:none;border:none;color:rgba(255,255,255,.2);cursor:pointer;font-size:14px;padding:2px 5px;border-radius:4px;transition:.12s;flex-shrink:0}
+.ver-del:hover{color:#ff6b6b;background:rgba(255,80,80,.1)}
+#versions-empty{font-size:12px;color:rgba(255,255,255,.2);padding:8px 4px;text-align:center}
+
 /* Source panel */
 
 
@@ -299,6 +328,17 @@ select:focus,select.psel:focus{border-color:rgba(255,255,255,0.3)}
       <div class="dz-btn">Upload File</div>
     </div>
 
+    <!-- Versions -->
+    <div id="versions-card">
+      <div id="versions-head">
+        <span>Versions</span>
+        <button id="save-ver-btn" onclick="saveVersion()">+ Save</button>
+      </div>
+      <div id="versions-list">
+        <div id="versions-empty">No saved versions yet</div>
+      </div>
+    </div>
+
     <!-- Layers -->
     <div id="layers-card">
       <div id="layer-list">
@@ -393,6 +433,94 @@ const dither = {
 };
 
 const lumExclude = { active: false, lo: 0, hi: 50 }; // luminance 0-255
+
+// ── VERSIONS ───────────────────────────────────────
+const MAX_VERSIONS = 20;
+let versions = [];
+try { versions = JSON.parse(localStorage.getItem('ds-versions') || '[]'); } catch(e) { versions = []; }
+
+function versionsToStorage(){
+  try { localStorage.setItem('ds-versions', JSON.stringify(versions)); } catch(e) {
+    // quota exceeded — drop oldest until it fits
+    while(versions.length > 1){ versions.shift(); try { localStorage.setItem('ds-versions', JSON.stringify(versions)); break; } catch(e2){} }
+  }
+}
+
+function saveVersion(){
+  if(!sourceImg){ alert('Upload an image first.'); return; }
+  const label = prompt('Version name:', new Date().toLocaleString()) || new Date().toLocaleString();
+
+  // Thumbnail from current canvas
+  const tc = document.createElement('canvas');
+  const tScale = Math.min(1, 120 / mc.width, 80 / mc.height);
+  tc.width = Math.round(mc.width * tScale); tc.height = Math.round(mc.height * tScale);
+  tc.getContext('2d').drawImage(mc, 0, 0, tc.width, tc.height);
+  const thumb = tc.toDataURL('image/jpeg', 0.7);
+
+  // Full image as data URL for restoration
+  const imgC = document.createElement('canvas');
+  imgC.width = sourceImg.img.naturalWidth; imgC.height = sourceImg.img.naturalHeight;
+  imgC.getContext('2d').drawImage(sourceImg.img, 0, 0);
+  const imageDataURL = imgC.toDataURL('image/jpeg', 0.85);
+
+  const ver = {
+    id: Date.now(),
+    label,
+    thumb,
+    imageDataURL,
+    imgMeta: { name: sourceImg.name, w: sourceImg.w, h: sourceImg.h, x: sourceImg.x||0, y: sourceImg.y||0, perspective: sourceImg.perspective||0 },
+    dither: JSON.parse(JSON.stringify(dither)),
+    lumExclude: {...lumExclude},
+    effects: JSON.parse(JSON.stringify(effects)),
+  };
+
+  versions.unshift(ver);
+  if(versions.length > MAX_VERSIONS) versions.pop();
+  versionsToStorage();
+  renderVersionsList();
+}
+
+function restoreVersion(id){
+  const ver = versions.find(v => v.id === id);
+  if(!ver) return;
+  const img = new Image();
+  img.onload = () => {
+    sourceImg = { img, ...ver.imgMeta };
+    Object.assign(dither, ver.dither);
+    dither.gm = JSON.parse(JSON.stringify(ver.dither.gm));
+    Object.assign(lumExclude, ver.lumExclude);
+    effects.length = 0; ver.effects.forEach(e => effects.push(JSON.parse(JSON.stringify(e))));
+    selItem = 'dither';
+    refreshAll();
+  };
+  img.src = ver.imageDataURL;
+}
+
+function deleteVersion(id){
+  versions = versions.filter(v => v.id !== id);
+  versionsToStorage();
+  renderVersionsList();
+}
+
+function renderVersionsList(){
+  const list = document.getElementById('versions-list');
+  const empty = document.getElementById('versions-empty');
+  if(!list) return;
+  list.querySelectorAll('.ver-item').forEach(el => el.remove());
+  if(!versions.length){ if(empty) empty.style.display='block'; return; }
+  if(empty) empty.style.display='none';
+  versions.forEach(ver => {
+    const el = document.createElement('div');
+    el.className = 'ver-item';
+    const ts = new Date(ver.id);
+    const timeStr = ts.toLocaleDateString([], {month:'short',day:'numeric'}) + ' ' + ts.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    el.innerHTML = `<img class="ver-thumb" src="${ver.thumb}" alt=""><div class="ver-info"><div class="ver-label">${ver.label}</div><div class="ver-time">${timeStr}</div></div><button class="ver-del" title="Delete">×</button>`;
+    el.querySelector('.ver-info').addEventListener('click', () => restoreVersion(ver.id));
+    el.querySelector('img').addEventListener('click', () => restoreVersion(ver.id));
+    el.querySelector('.ver-del').addEventListener('click', e => { e.stopPropagation(); if(confirm('Delete this version?')) deleteVersion(ver.id); });
+    list.appendChild(el);
+  });
+}
 
 const BLEND_MODES = [
   ['source-over','normal'],['multiply','multiply'],['screen','screen'],
@@ -1523,6 +1651,7 @@ selItem='dither';
 document.getElementById('dither-item').classList.add('sel');
 renderEffectsList();
 renderProps();
+renderVersionsList();
 </script>
 </body>
 </html>
