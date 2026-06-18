@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v16</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v17</span></div>
   </div>
 </div>
 
@@ -229,8 +229,8 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
         <label class="sw"><input type="checkbox" id="persp-toggle"><span class="sw-t"></span></label>
       </div>
       <div class="tog-row" style="margin-top:12px">
-        <span class="prop-label">Double Layer</span>
-        <label class="sw"><input type="checkbox" id="layer-toggle" checked><span class="sw-t"></span></label>
+        <span class="prop-label">Dual Path</span>
+        <label class="sw"><input type="checkbox" id="dualpath-toggle" checked><span class="sw-t"></span></label>
       </div>
       <div class="tog-row" style="margin-top:12px">
         <span class="prop-label">Light Theme</span>
@@ -255,7 +255,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
       </div>
       <div class="prop-row">
         <div class="prop-top"><span class="prop-label">Spread</span><div class="prop-val" id="spread-v">70</div></div>
-        <input type="range" id="spread" min="0" max="100" value="70" step="1">
+        <input type="range" id="spread" min="0" max="500" value="70" step="1">
       </div>
       <div class="prop-row">
         <div class="prop-top"><span class="prop-label">Lane Width</span><div class="prop-val" id="lane-v">100</div></div>
@@ -308,7 +308,7 @@ const vert=`attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*.5+.5;gl_P
 const frag=`
 precision highp float;
 varying vec2 vUv;
-uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight,uAngle,uLayers,uSeed;
+uniform float uTime,uDensity,uSize,uSpread,uLane,uVariance,uSkew,uSpeed,uOpacity,uRoundness,uGlow,uGlowW,uFov,uLight,uAngle,uDualPath,uSeed;
 uniform vec2 uRes;
 uniform sampler2D uGradTex;
 const int MAXN=200;
@@ -344,7 +344,7 @@ void main(){
   uv=vec2(sc.x/aspect+.5,sc.y+.5);
 
   float baseSize=mix(.002,.07,uSize*.01);
-  float spread=mix(.25,1.25,uSpread*.01);
+  float spread=mix(.25,8.,uSpread/500.);
   float skewA=exp2(((1.-(uSkew*.01))-.25)*2.4)*2.4;
   float laneW=mix(.18,1.18,uLane*.01);
   float varF=mix(.45,1.15,uVariance*.01);
@@ -371,7 +371,7 @@ void main(){
     float layD=clamp((float(i)+rnd.x*.75)/max(float(N-1),1.),0.,1.);
     float travel=fract(rnd.y+time*mix(.18,1.,layD));
     float sv=mix(1.,mix(.55,1.9,rnd2),uVariance*.01);
-    float side=mix(-1.,1.,step(.5,rnd2));
+    float side=uDualPath>0.5?mix(-1.,1.,step(.5,rnd2)):1.;
     float dir=sign(side);
 
     bool didHit=false;
@@ -380,7 +380,7 @@ void main(){
     if(isFlat){
       float flatH=baseSize*sv*0.5;
       float flatW=baseSize*mix(4.,18.,rnd2);
-      float flatY=(rnd3-.5)*mix(.1,1.8,uSpread*.01)*varF;
+      float flatY=(rnd3-.5)*mix(.1,6.,uSpread/500.)*varF;
       float flatX=(fract(travel+rnd.x)-.5)*(aspect+flatW*2.+0.4)*2.*dir;
       vec2 barHalf=vec2(flatW,flatH);
       vec2 flatLocal=screenPos-vec2(flatX,flatY);
@@ -452,7 +452,7 @@ const U=n=>gl.getUniformLocation(prog,n);
 const uTime=U('uTime'),uRes=U('uRes'),uDens=U('uDensity'),uSz=U('uSize'),uSpr=U('uSpread');
 const uLn=U('uLane'),uVr=U('uVariance'),uSk=U('uSkew'),uSp=U('uSpeed');
 const uOp=U('uOpacity'),uRd=U('uRoundness'),uGl=U('uGlow'),uGw=U('uGlowW'),uGP=U('uGlowPos'),uGT=U('uGradTex');
-const uFov=U('uFov'),uLt=U('uLight'),uAng=U('uAngle'),uLay=U('uLayers'),uSd=U('uSeed');
+const uFov=U('uFov'),uLt=U('uLight'),uAng=U('uAngle'),uDP=U('uDualPath'),uSd=U('uSeed');
 
 const gradTex=gl.createTexture();
 gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gradTex);
@@ -556,11 +556,11 @@ document.getElementById('theme-toggle').addEventListener('change',function(){
 
 // perspective toggle — flat (fov=0) vs 3D (fov=100, so perspective=1.0 exactly)
 vals.fov = 0;
-vals.layers = 1;
+vals.dualpath = 1;
 vals.seed = 0;
 function randomizeSeed(){ vals.seed = Math.random()*1000; }
-document.getElementById('layer-toggle').addEventListener('change', function(){
-  vals.layers = this.checked ? 1 : 0;
+document.getElementById('dualpath-toggle').addEventListener('change', function(){
+  vals.dualpath = this.checked ? 1 : 0;
 });
 document.getElementById('persp-toggle').addEventListener('change', function(){
   vals.fov = this.checked ? 100 : 0;
@@ -628,7 +628,7 @@ void main(){
     bool didHit=false;vec2 hitLuv=vec2(0.);float tHit=1e8;float hitAlpha=0.;
     if(isFlat){
       float flatH=mix(.004,.04,sv*0.5)*0.8;float flatW=mix(.15,.65,rnd2);
-      float flatY=(rnd3-.5)*mix(.1,1.8,uSpread*.01)*varF;
+      float flatY=(rnd3-.5)*mix(.1,6.,uSpread/500.)*varF;
       float flatX=(fract(travel+rnd.x)-.5)*4.5*dir;
       vec2 barHalf=vec2(flatW,flatH);
       vec2 flatLocal=vec2((uv.x-.5)*aspect,uv.y-.5)-vec2(flatX,flatY);
@@ -784,7 +784,7 @@ function frame(){
   gl.uniform1f(uLn,vals.lane);gl.uniform1f(uVr,vals.variance);gl.uniform1f(uSk,vals.skew);
   gl.uniform1f(uSp,vals.speed);gl.uniform1f(uOp,vals.opacity);gl.uniform1f(uRd,vals.roundness);
   gl.uniform1f(uGl,vals.glow);gl.uniform1f(uGw,vals.gloww);
-  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);gl.uniform1f(uAng,(vals.angle||0)*Math.PI/180.);gl.uniform1f(uLay,vals.layers);gl.uniform1f(uSd,vals.seed||0);
+  gl.uniform1f(uFov,vals.fov||0);gl.uniform1f(uLt,vals.light||0);gl.uniform1f(uAng,(vals.angle||0)*Math.PI/180.);gl.uniform1f(uDP,vals.dualpath);gl.uniform1f(uSd,vals.seed||0);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   requestAnimationFrame(frame);
 }
