@@ -756,6 +756,7 @@ function workCanvases(w,h){
 
 // ── ANIMATION + EFFECTS ────────────────────────────
 function hasEffects(){return effects.some(e=>e.visible)}
+function needsAnim(){return hasEffects()||(sourceImg?.isVideo&&(videoSettings.mirror||videoSettings.tail));}
 function startAnim(){
   if(animFrame)return;
   const tick=()=>{mouseTrail=mouseTrail.filter(p=>Date.now()-p.t<900);doRender();animFrame=requestAnimationFrame(tick);};
@@ -822,7 +823,7 @@ function renderBloom(L,artW,artH){
 
 // ── RENDER ──────────────────────────────────────────
 function schedRender(){
-  if(hasEffects()){startAnim();}
+  if(needsAnim()){startAnim();}
   else{stopAnim();clearTimeout(renderTick);renderTick=setTimeout(doRender,80);}
 }
 
@@ -1177,7 +1178,7 @@ function renderEffectsList(){
     el.dataset.id=L.id;
     el.innerHTML=`<div class="litem-main"><div class="layer-left"><div class="layer-icon-btn">${FX[L.type]||FX.bloom}</div><span class="lname">${L.name}</span></div><button class="vis-btn ${L.visible?'on':''}">${eyeSVG}</button></div>`;
     el.querySelector('.litem-main').addEventListener('click',e=>{if(e.target.closest('.vis-btn'))return;selectEffect(L.id);});
-    el.querySelector('.vis-btn').addEventListener('click',e=>{e.stopPropagation();L.visible=!L.visible;e.currentTarget.classList.toggle('on',L.visible);if(!hasEffects())stopAnim();else startAnim();schedRender();});
+    el.querySelector('.vis-btn').addEventListener('click',e=>{e.stopPropagation();L.visible=!L.visible;e.currentTarget.classList.toggle('on',L.visible);if(!needsAnim())stopAnim();else startAnim();schedRender();});
     list.appendChild(el);
   });
 }
@@ -1386,11 +1387,13 @@ function initVideoControls(L){
     videoSettings.mirror=v;
     if(v){_mirrorT=L.video?.currentTime||0;_vidDir=1;_vidLastRaf=null;L.video?.pause();}
     else{restartVideo();}
+    if(needsAnim())startAnim();
     renderProps();
   });
   chk('vid-tail',v=>{
     videoSettings.tail=v;
     if(!v){_vidFirstPlay=true;}
+    if(needsAnim())startAnim();
     document.getElementById('vid-tail-wrap').style.display=v?'block':'none';
   });
 
