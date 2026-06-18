@@ -381,6 +381,10 @@ select:focus,select.psel:focus{border-color:rgba(255,255,255,0.3)}
     <button class="tb-icon-btn" title="Redo">
       <svg viewBox="0 0 16 16" fill="none"><path d="M13 6H7a4 4 0 000 8h6M13 6l-3-3M13 6l-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <label title="Preview background" style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0">
+      <span style="font-size:11px;color:rgba(255,255,255,.4);white-space:nowrap">BG</span>
+      <input type="color" id="bg-color-pick" value="#050508" style="width:22px;height:22px;border:none;border-radius:5px;padding:0;cursor:pointer;background:none;appearance:none;-webkit-appearance:none;">
+    </label>
     <button class="tb-outline-btn">Copy React</button>
     <div id="export-wrap" style="position:relative;flex:1">
     <button class="tb-solid-btn" id="export-btn" onclick="toggleExportMenu(event)" style="width:100%">Export ↓</button>
@@ -2100,6 +2104,7 @@ render();
 }
 // ── INIT ───────────────────────────────────────────
 new ResizeObserver(()=>{if(sourceImg)schedRender()}).observe(ca);
+document.getElementById('bg-color-pick').addEventListener('input',e=>{mc.style.background=e.target.value;});
 function refreshAll(){renderEffectsList();renderProps();schedRender();}
 startAnim();
 selItem='dither';
