@@ -423,7 +423,7 @@ void main(){
     }
   }
 
-  if(hasSec&&!isFlat&&uLayers>0.5){
+  if(hasSec&&!isFlat){
     float st=uLight>0.5?1.-secNF:secNF;
     vec3 sc=texture2D(uGradTex,vec2(st,.5)).rgb*mix(.66,1.,st);
     sc=applyGlow(sc,secSDF,secMinH,uGlow*.01,uGlowW*.01);
