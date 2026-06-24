@@ -143,6 +143,15 @@ body.light .sw-t:before{background:rgba(0,0,0,.45)}
 body.light .sw input:checked+.sw-t{background:rgba(0,0,0,0.82)}
 body.light .sw input:checked+.sw-t:before{background:#fff}
 body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
+body.light #preset-name{background:rgba(0,0,0,0.05);border-color:rgba(0,0,0,0.11);color:#000}
+.preset-row{display:flex;align-items:center;gap:6px}
+.preset-load{flex:1;text-align:left;padding:7px 10px;font-size:13px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,.7);cursor:pointer;font-family:'Geist',sans-serif;transition:.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preset-load:hover{background:rgba(255,255,255,0.08);color:#fff}
+.preset-del{flex-shrink:0;padding:7px 9px;font-size:12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,.3);cursor:pointer;font-family:'Geist',sans-serif;transition:.15s}
+.preset-del:hover{color:#ff6b6b;border-color:rgba(255,80,80,.25);background:rgba(255,80,80,.07)}
+body.light .preset-load{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);color:rgba(0,0,0,.6)}
+body.light .preset-load:hover{background:rgba(0,0,0,.07);color:#000}
+body.light .preset-del{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);color:rgba(0,0,0,.3)}
 </style>
 </head>
 <body>
@@ -170,7 +179,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v18</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v19</span></div>
   </div>
 </div>
 
@@ -188,6 +197,21 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <button class="tb-solid-btn" onclick="exportReactTSX()">Export React TSX ↓</button>
   </div>
   <div id="rp">
+
+    <!-- Presets -->
+    <div class="sec">
+      <div class="sec-head"><h3>Presets</h3></div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input id="preset-name" type="text" placeholder="Preset name…" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.11);border-radius:8px;color:#fff;font-family:'Geist',sans-serif;font-size:13px;padding:7px 10px;outline:none">
+        <button class="stop-btn" onclick="savePreset()">Save</button>
+      </div>
+      <div id="preset-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:6px">
+        <button class="stop-btn" onclick="exportPresets()">Export JSON ↓</button>
+        <button class="stop-btn" onclick="document.getElementById('preset-import').click()">Import JSON</button>
+        <input id="preset-import" type="file" accept=".json" style="display:none" onchange="importPresets(this)">
+      </div>
+    </div>
 
     <!-- Gradient Map -->
     <div class="sec">
@@ -776,6 +800,68 @@ export default BloomfiBars;
   a.href=URL.createObjectURL(blob);
   a.click();
 }
+
+// ── PRESETS ──────────────────────────────────────────────
+function getPresetState(){
+  return {
+    vals: Object.fromEntries(Object.entries(vals).filter(([k])=>k!=='light')),
+    gradStops: gradStops.map(s=>({pos:s.pos,color:[...s.color]})),
+    fov: vals.fov, dualpath: vals.dualpath, seed: vals.seed
+  };
+}
+function applyPresetState(state){
+  const sv=state.vals||state;
+  sliders.forEach(id=>{
+    if(sv[id]===undefined)return;
+    const el=document.getElementById(id),out=document.getElementById(id+'-v');
+    el.value=sv[id]; vals[id]=sv[id]; if(out)out.textContent=sv[id]; updateSliderFill(el);
+  });
+  if(sv.fov!==undefined){vals.fov=sv.fov;document.getElementById('persp-toggle').checked=sv.fov>0;}
+  if(sv.dualpath!==undefined){vals.dualpath=sv.dualpath;document.getElementById('dualpath-toggle').checked=sv.dualpath>0;}
+  if(sv.seed!==undefined)vals.seed=sv.seed;
+  if(state.gradStops){gradStops=state.gradStops.map(s=>({pos:s.pos,color:[...s.color]}));uploadGrad();drawGrad();selS(Math.min(selStop,gradStops.length-1));}
+}
+let presets=JSON.parse(localStorage.getItem('bloomfi-presets')||'{}');
+function renderPresetList(){
+  const el=document.getElementById('preset-list');
+  el.innerHTML='';
+  Object.keys(presets).forEach(name=>{
+    const row=document.createElement('div');row.className='preset-row';
+    const btn=document.createElement('button');btn.className='preset-load';btn.textContent=name;
+    btn.onclick=()=>applyPresetState(presets[name]);
+    const del=document.createElement('button');del.className='preset-del';del.textContent='✕';
+    del.onclick=()=>{delete presets[name];localStorage.setItem('bloomfi-presets',JSON.stringify(presets));renderPresetList();};
+    row.appendChild(btn);row.appendChild(del);el.appendChild(row);
+  });
+}
+function savePreset(){
+  const name=document.getElementById('preset-name').value.trim()||('Preset '+(Object.keys(presets).length+1));
+  presets[name]=getPresetState();
+  localStorage.setItem('bloomfi-presets',JSON.stringify(presets));
+  document.getElementById('preset-name').value='';
+  renderPresetList();
+}
+function exportPresets(){
+  const a=document.createElement('a');
+  a.download='bloomfi-presets.json';
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(presets,null,2)],{type:'application/json'}));
+  a.click();
+}
+function importPresets(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      Object.assign(presets,data);
+      localStorage.setItem('bloomfi-presets',JSON.stringify(presets));
+      renderPresetList();
+    }catch(err){alert('Invalid preset file');}
+  };
+  reader.readAsText(file);
+  input.value='';
+}
+renderPresetList();
 
 function exportFrame(){
   const a=document.createElement('a');
