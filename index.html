@@ -170,7 +170,7 @@ body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v17</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v18</span></div>
   </div>
 </div>
 
@@ -362,13 +362,16 @@ void main(){
   vec3 rd3=normalize(vec3(screenPos,focalLen));
   float safeRdx=sign(rd3.x)*max(abs(rd3.x),.0001);
 
+  // single path uses half the bars — same visual density, half the iterations
+  int effN = uDualPath>0.5 ? N : N/2;
+
   for(int i=0;i<MAXN;i++){
-    if(i>=N)break;
+    if(i>=effN)break;
     float fi=float(i)+1.;
     vec2 rnd=hash21(fi*23.17+uSeed);
     float rnd2=fract((rnd.x+rnd.y)*12.35731);
     float rnd3=fract((rnd.x*5.731+rnd.y*9.137)*4.17321);
-    float layD=clamp((float(i)+rnd.x*.75)/max(float(N-1),1.),0.,1.);
+    float layD=clamp((float(i)+rnd.x*.75)/max(float(effN-1),1.),0.,1.);
     float travel=fract(rnd.y+time*mix(.18,1.,layD));
     float sv=mix(1.,mix(.55,1.9,rnd2),uVariance*.01);
     float side=uDualPath>0.5?mix(-1.,1.,step(.5,rnd2)):1.;
@@ -382,13 +385,15 @@ void main(){
       float flatW=baseSize*mix(4.,18.,rnd2);
       float flatY=(rnd3-.5)*mix(.1,6.,uSpread/500.)*varF;
       float flatX=(fract(travel+rnd.x)-.5)*(aspect+flatW*2.+0.4)*2.*dir;
-      vec2 barHalf=vec2(flatW,flatH);
       vec2 flatLocal=screenPos-vec2(flatX,flatY);
-      float rFlat=mix(0.,min(flatW,flatH),uRoundness*.01);
-      float sdf=sdRoundBox(flatLocal,barHalf,rFlat);
-      if(sdf<=0.){
-        didHit=true; hitSDF=-sdf; hitMinH=flatH;
-        tHit=0.5+rnd.x*0.5; hitAlpha=uOpacity*.01; hitNF=travel;
+      // cheap AABB reject before expensive sdRoundBox
+      if(abs(flatLocal.x)<flatW&&abs(flatLocal.y)<flatH){
+        float rFlat=mix(0.,min(flatW,flatH),uRoundness*.01);
+        float sdf=sdRoundBox(flatLocal,vec2(flatW,flatH),rFlat);
+        if(sdf<=0.){
+          didHit=true; hitSDF=-sdf; hitMinH=flatH;
+          tHit=0.5+rnd.x*0.5; hitAlpha=uOpacity*.01; hitNF=travel;
+        }
       }
     } else {
       float av=mix(1.,mix(.65,1.6,rnd3),uVariance*.01);
@@ -402,13 +407,16 @@ void main(){
       float tHit3=laneOff/safeRdx;
       if(tHit3>0.){
         vec2 hitL3d=vec2(rd3.y*tHit3-crossOff,rd3.z*tHit3-depth);
-        float r3=mix(0.,min(halfS3d.x,halfS3d.y),uRoundness*.01);
-        float sdf=sdRoundBox(hitL3d,halfS3d,r3);
-        if(sdf<=0.){
-          didHit=true; hitSDF=-sdf; hitMinH=halfS3d.x;
-          tHit=tHit3; hitNF=travel;
-          float farFade=1.-smoothstep(.85,farD,depth+hitL3d.y);
-          hitAlpha=farFade*mix(.42,1.,travel*(1.35-.35*travel))*uOpacity*.01;
+        // cheap AABB reject before expensive sdRoundBox
+        if(abs(hitL3d.x)<halfS3d.x&&abs(hitL3d.y)<halfS3d.y){
+          float r3=mix(0.,min(halfS3d.x,halfS3d.y),uRoundness*.01);
+          float sdf=sdRoundBox(hitL3d,halfS3d,r3);
+          if(sdf<=0.){
+            didHit=true; hitSDF=-sdf; hitMinH=halfS3d.x;
+            tHit=tHit3; hitNF=travel;
+            float farFade=1.-smoothstep(.85,farD,depth+hitL3d.y);
+            hitAlpha=farFade*mix(.42,1.,travel*(1.35-.35*travel))*uOpacity*.01;
+          }
         }
       }
     }
