@@ -145,13 +145,15 @@ body.light .sw input:checked+.sw-t:before{background:#fff}
 body.light #rp::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
 body.light #preset-name{background:rgba(0,0,0,0.05);border-color:rgba(0,0,0,0.11);color:#000}
 .preset-row{display:flex;align-items:center;gap:6px}
-.preset-load{flex:1;text-align:left;padding:7px 10px;font-size:13px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,.7);cursor:pointer;font-family:'Geist',sans-serif;transition:.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.preset-load:hover{background:rgba(255,255,255,0.08);color:#fff}
-.preset-del{flex-shrink:0;padding:7px 9px;font-size:12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,.3);cursor:pointer;font-family:'Geist',sans-serif;transition:.15s}
+.preset-load{flex:1;text-align:left;padding:7px 10px;font-size:13px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,.6);cursor:pointer;font-family:'Geist',sans-serif;transition:.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preset-load:hover{background:rgba(255,255,255,0.07);color:#fff}
+.preset-load.selected{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,.35);color:#fff}
+.preset-del{flex-shrink:0;padding:7px 9px;font-size:11px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:rgba(255,255,255,.25);cursor:pointer;font-family:'Geist',sans-serif;transition:.15s}
 .preset-del:hover{color:#ff6b6b;border-color:rgba(255,80,80,.25);background:rgba(255,80,80,.07)}
 body.light .preset-load{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);color:rgba(0,0,0,.6)}
 body.light .preset-load:hover{background:rgba(0,0,0,.07);color:#000}
-body.light .preset-del{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);color:rgba(0,0,0,.3)}
+body.light .preset-load.selected{background:rgba(0,0,0,.1);border-color:rgba(0,0,0,.35);color:#000}
+body.light .preset-del{border-color:rgba(0,0,0,.08);color:rgba(0,0,0,.3)}
 </style>
 </head>
 <body>
@@ -179,7 +181,7 @@ body.light .preset-del{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);co
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v20</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v21</span></div>
   </div>
 </div>
 
@@ -201,14 +203,14 @@ body.light .preset-del{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);co
     <!-- Presets -->
     <div class="sec">
       <div class="sec-head"><h3>Presets</h3></div>
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        <input id="preset-name" type="text" placeholder="Preset name…" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.11);border-radius:8px;color:#fff;font-family:'Geist',sans-serif;font-size:13px;padding:7px 10px;outline:none">
+      <div id="preset-list" style="display:flex;flex-direction:column;gap:3px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input id="preset-name" type="text" placeholder="New preset name…" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.11);border-radius:8px;color:#fff;font-family:'Geist',sans-serif;font-size:13px;padding:6px 10px;outline:none">
         <button class="stop-btn" onclick="savePreset()">Save</button>
       </div>
-      <div id="preset-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px"></div>
       <div style="display:flex;gap:6px">
-        <button class="stop-btn" onclick="exportPresets()">Export JSON ↓</button>
-        <button class="stop-btn" onclick="document.getElementById('preset-import').click()">Import JSON</button>
+        <button class="stop-btn" id="preset-export-btn" onclick="exportSelectedPreset()" style="opacity:.4;cursor:default">Export ↓</button>
+        <button class="stop-btn" onclick="document.getElementById('preset-import').click()">Import ↑</button>
         <input id="preset-import" type="file" accept=".json" style="display:none">
       </div>
     </div>
@@ -837,29 +839,49 @@ function applyPresetState(state){
   }
 }
 let presets=JSON.parse(localStorage.getItem('bloomfi-presets')||'{}');
+let selectedPreset=null;
+function savePresets(){localStorage.setItem('bloomfi-presets',JSON.stringify(presets));}
 function renderPresetList(){
   const el=document.getElementById('preset-list');
   el.innerHTML='';
-  Object.keys(presets).forEach(name=>{
+  const names=Object.keys(presets);
+  names.forEach(name=>{
     const row=document.createElement('div');row.className='preset-row';
-    const btn=document.createElement('button');btn.className='preset-load';btn.textContent=name;
-    btn.onclick=()=>applyPresetState(presets[name]);
+    const btn=document.createElement('button');
+    btn.className='preset-load'+(name===selectedPreset?' selected':'');
+    btn.textContent=name;
+    btn.onclick=()=>{
+      selectedPreset=name;
+      applyPresetState(presets[name]);
+      renderPresetList();
+      const eb=document.getElementById('preset-export-btn');
+      eb.style.opacity='1';eb.style.cursor='pointer';
+    };
     const del=document.createElement('button');del.className='preset-del';del.textContent='✕';
-    del.onclick=()=>{delete presets[name];localStorage.setItem('bloomfi-presets',JSON.stringify(presets));renderPresetList();};
+    del.onclick=(e)=>{
+      e.stopPropagation();
+      delete presets[name];
+      if(selectedPreset===name){selectedPreset=null;const eb=document.getElementById('preset-export-btn');eb.style.opacity='.4';eb.style.cursor='default';}
+      savePresets();renderPresetList();
+    };
     row.appendChild(btn);row.appendChild(del);el.appendChild(row);
   });
 }
 function savePreset(){
   const name=document.getElementById('preset-name').value.trim()||('Preset '+(Object.keys(presets).length+1));
   presets[name]=getPresetState();
-  localStorage.setItem('bloomfi-presets',JSON.stringify(presets));
+  selectedPreset=name;
+  savePresets();
   document.getElementById('preset-name').value='';
   renderPresetList();
+  const eb=document.getElementById('preset-export-btn');eb.style.opacity='1';eb.style.cursor='pointer';
 }
-function exportPresets(){
+function exportSelectedPreset(){
+  if(!selectedPreset||!presets[selectedPreset])return;
+  const data={[selectedPreset]:presets[selectedPreset]};
   const a=document.createElement('a');
-  a.download='bloomfi-presets.json';
-  a.href=URL.createObjectURL(new Blob([JSON.stringify(presets,null,2)],{type:'application/json'}));
+  a.download=selectedPreset.replace(/\s+/g,'-').toLowerCase()+'.json';
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
   a.click();
 }
 document.getElementById('preset-import').addEventListener('change',function(){
