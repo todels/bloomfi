@@ -179,7 +179,7 @@ body.light .preset-del{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);co
     <div class="stat-row"><span class="stat-label">Renderer</span><span class="stat-val">WebGL</span></div>
     <div class="stat-row"><span class="stat-label">Bars max</span><span class="stat-val">200</span></div>
     <div class="stat-row"><span class="stat-label">Gradient stops</span><span class="stat-val" id="stop-count">5</span></div>
-    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v19</span></div>
+    <div class="stat-row"><span class="stat-label">Version</span><span class="stat-val">v20</span></div>
   </div>
 </div>
 
@@ -209,7 +209,7 @@ body.light .preset-del{border-color:rgba(0,0,0,.1);background:rgba(0,0,0,.03);co
       <div style="display:flex;gap:6px">
         <button class="stop-btn" onclick="exportPresets()">Export JSON ↓</button>
         <button class="stop-btn" onclick="document.getElementById('preset-import').click()">Import JSON</button>
-        <input id="preset-import" type="file" accept=".json" style="display:none" onchange="importPresets(this)">
+        <input id="preset-import" type="file" accept=".json" style="display:none">
       </div>
     </div>
 
@@ -804,22 +804,37 @@ export default BloomfiBars;
 // ── PRESETS ──────────────────────────────────────────────
 function getPresetState(){
   return {
-    vals: Object.fromEntries(Object.entries(vals).filter(([k])=>k!=='light')),
-    gradStops: gradStops.map(s=>({pos:s.pos,color:[...s.color]})),
-    fov: vals.fov, dualpath: vals.dualpath, seed: vals.seed
+    sliders: Object.fromEntries(sliders.map(id=>[id,vals[id]])),
+    fov: vals.fov,
+    dualpath: vals.dualpath,
+    seed: vals.seed,
+    light: vals.light,
+    gradStops: gradStops.map(s=>({pos:s.pos,color:[...s.color]}))
   };
 }
 function applyPresetState(state){
-  const sv=state.vals||state;
-  sliders.forEach(id=>{
-    if(sv[id]===undefined)return;
-    const el=document.getElementById(id),out=document.getElementById(id+'-v');
-    el.value=sv[id]; vals[id]=sv[id]; if(out)out.textContent=sv[id]; updateSliderFill(el);
-  });
-  if(sv.fov!==undefined){vals.fov=sv.fov;document.getElementById('persp-toggle').checked=sv.fov>0;}
-  if(sv.dualpath!==undefined){vals.dualpath=sv.dualpath;document.getElementById('dualpath-toggle').checked=sv.dualpath>0;}
-  if(sv.seed!==undefined)vals.seed=sv.seed;
-  if(state.gradStops){gradStops=state.gradStops.map(s=>({pos:s.pos,color:[...s.color]}));uploadGrad();drawGrad();selS(Math.min(selStop,gradStops.length-1));}
+  if(state.sliders){
+    sliders.forEach(id=>{
+      if(state.sliders[id]===undefined)return;
+      const el=document.getElementById(id),out=document.getElementById(id+'-v');
+      el.value=state.sliders[id]; vals[id]=state.sliders[id];
+      if(out)out.textContent=state.sliders[id]; updateSliderFill(el);
+    });
+  }
+  if(state.fov!==undefined){vals.fov=state.fov;document.getElementById('persp-toggle').checked=state.fov>0;}
+  if(state.dualpath!==undefined){vals.dualpath=state.dualpath;document.getElementById('dualpath-toggle').checked=state.dualpath>0;}
+  if(state.seed!==undefined)vals.seed=state.seed;
+  if(state.light!==undefined){
+    vals.light=state.light;
+    const isLight=state.light>0.5;
+    document.getElementById('theme-toggle').checked=isLight;
+    document.body.classList.toggle('light',isLight);
+    updateSliderFillColor();
+  }
+  if(state.gradStops){
+    gradStops=state.gradStops.map(s=>({pos:s.pos,color:[...s.color]}));
+    uploadGrad();drawGrad();selS(Math.min(selStop,gradStops.length-1));
+  }
 }
 let presets=JSON.parse(localStorage.getItem('bloomfi-presets')||'{}');
 function renderPresetList(){
@@ -847,8 +862,8 @@ function exportPresets(){
   a.href=URL.createObjectURL(new Blob([JSON.stringify(presets,null,2)],{type:'application/json'}));
   a.click();
 }
-function importPresets(input){
-  const file=input.files[0];if(!file)return;
+document.getElementById('preset-import').addEventListener('change',function(){
+  const file=this.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
     try{
@@ -859,8 +874,8 @@ function importPresets(input){
     }catch(err){alert('Invalid preset file');}
   };
   reader.readAsText(file);
-  input.value='';
-}
+  this.value='';
+});
 renderPresetList();
 
 function exportFrame(){
